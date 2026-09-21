@@ -30,6 +30,8 @@ class TransactionType(Enum):
     INCOME = "income"  # 收入
     TRANSFER = "transfer"  # 内部转账
     REFUND = "refund"  # 退款
+    INVESTMENT = "investment"  # 理财资产变动（非收入/支出）
+    PREAUTHORIZATION = "preauthorization"  # 预授权/冻结（非最终消费）
     UNKNOWN = "unknown"  # 未知
 
 
