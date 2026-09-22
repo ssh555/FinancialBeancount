@@ -413,6 +413,48 @@ class LedgerStore:
             )
         return batch, True
 
+    def list_import_batches_page(
+        self, *, limit: int, offset: int
+    ) -> tuple[list[dict[str, object]], int]:
+        """Return import history with observation and review counts."""
+
+        if limit < 1 or offset < 0:
+            raise ValueError("limit must be positive and offset must not be negative")
+        total = self.connection.execute("SELECT COUNT(*) FROM import_batches").fetchone()[0]
+        rows = self.connection.execute(
+            """
+            SELECT batches.*,
+                   (SELECT COUNT(*) FROM import_occurrences AS occurrences
+                    WHERE occurrences.batch_id = batches.batch_id) AS occurrence_count,
+                   (SELECT COUNT(DISTINCT raw_id) FROM import_occurrences AS occurrences
+                    WHERE occurrences.batch_id = batches.batch_id) AS unique_observation_count,
+                   (SELECT COUNT(*) FROM review_sessions AS sessions
+                    WHERE sessions.import_batch_id = batches.batch_id) AS review_session_count,
+                   (SELECT COUNT(*) FROM review_items AS items
+                    JOIN review_sessions AS sessions ON sessions.session_id = items.session_id
+                    WHERE sessions.import_batch_id = batches.batch_id
+                      AND items.status = 'pending') AS pending_count
+            FROM import_batches AS batches
+            ORDER BY batches.imported_at DESC, batches.batch_id
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        ).fetchall()
+        return [
+            {
+                "batch_id": row["batch_id"],
+                "source": row["source"],
+                "source_file": row["source_file"],
+                "source_file_hash": row["source_file_hash"],
+                "imported_at": row["imported_at"],
+                "occurrence_count": row["occurrence_count"],
+                "unique_observation_count": row["unique_observation_count"],
+                "review_session_count": row["review_session_count"],
+                "pending_count": row["pending_count"] or 0,
+            }
+            for row in rows
+        ], total
+
     def add_raw(self, raw: RawTransaction) -> RawImportResult:
         """Store a raw observation once, even when the same statement is re-imported."""
 

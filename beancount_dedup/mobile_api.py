@@ -24,6 +24,7 @@ from .candidate_review import CandidateReviewEvent, CandidateReviewGroup, Candid
 from .ledger_models import CanonicalTransaction, RawTransaction, ReviewStatus
 from .ledger_store import SCHEMA_VERSION, LedgerStore
 from .models import TransactionType
+from .portable_archive import export_portable_archive
 from .refund_relationships import RefundCandidate, RefundRelationshipService, RefundReviewEvent
 from .review import ImportReviewService, ReviewEvent, ReviewItem, ReviewSession
 from .statement_importer import StatementImporter
@@ -58,6 +59,8 @@ _WEB_ASSETS = {
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
     "/service-worker.js": ("service-worker.js", "text/javascript; charset=utf-8"),
+    "/icon.svg": ("icon.svg", "image/svg+xml"),
+    "/maskable-icon.svg": ("maskable-icon.svg", "image/svg+xml"),
 }
 
 
@@ -116,8 +119,12 @@ class MobileLedgerApi:
                 return self._ok(list(self.statement_importer.supported_formats()))
             if method == "POST" and path == "/api/v1/imports":
                 return self._import_statement(body or {})
+            if method == "GET" and path == "/api/v1/imports":
+                return self._list_import_batches(query)
             if method == "GET" and path == "/api/v1/exports/transactions":
                 return self._export_transactions(query)
+            if method == "GET" and path == "/api/v1/exports/portable-archive":
+                return self._export_portable_archive()
             if method == "GET" and path == "/api/v1/statistics/summary":
                 report = self.statistics.summarize(
                     _optional_date(query, "date_from"), _optional_date(query, "date_to")
@@ -292,6 +299,28 @@ class MobileLedgerApi:
         return self._ok(
             [item.to_dict(include_sources=False) for item in transactions],
             {"format": query.get("format", ["json"])[0], "total": len(transactions)},
+        )
+
+    def _list_import_batches(self, query: dict[str, list[str]]) -> ApiResponse:
+        page, page_size = _pagination(query)
+        batches, total = self.store.list_import_batches_page(
+            limit=page_size, offset=(page - 1) * page_size
+        )
+        return self._ok(
+            batches, {"page": page, "page_size": page_size, "total": total}
+        )
+
+    def _export_portable_archive(self) -> ApiResponse:
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "ledger.financial-beancount.zip"
+            manifest = export_portable_archive(self.store, destination)
+            encoded = base64.b64encode(destination.read_bytes()).decode("ascii")
+        return self._ok(
+            {
+                "filename": "ledger.financial-beancount.zip",
+                "content_base64": encoded,
+                "manifest": manifest.to_dict(),
+            }
         )
 
     def _list_candidates(self, query: dict[str, list[str]]) -> ApiResponse:

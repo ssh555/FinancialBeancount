@@ -272,6 +272,32 @@ function fileAsBase64(file) {
   });
 }
 
+function base64AsBlob(encoded, mime) {
+  const binary = atob(encoded); const chunks = [];
+  for (let offset = 0; offset < binary.length; offset += 65536) {
+    const slice = binary.slice(offset, offset + 65536); chunks.push(Uint8Array.from(slice, char => char.charCodeAt(0)));
+  }
+  return new Blob(chunks, { type: mime });
+}
+
+async function exportPortableArchive() {
+  const button = $("#archive-export-button"); button.disabled = true;
+  try {
+    const { data } = await request("/api/v1/exports/portable-archive");
+    const url = URL.createObjectURL(base64AsBlob(data.content_base64, "application/zip"));
+    const link = document.createElement("a"); link.href = url; link.download = data.filename; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000); toast("完整便携归档已生成");
+  } catch (error) { toast(error.message); } finally { button.disabled = false; }
+}
+
+async function showImportHistory() {
+  $("#dialog-title").textContent = "导入历史"; $("#dialog-content").innerHTML = '<div class="skeleton"></div>'; if (!$("#detail-dialog").open) $("#detail-dialog").showModal();
+  try {
+    const payload = await request("/api/v1/imports?page_size=200");
+    $("#dialog-content").innerHTML = payload.data.length ? `<div class="stack-list">${payload.data.map(item => `<article class="list-card"><span class="list-top"><span class="list-title">${escapeHtml(item.source_file)}</span><span class="tag">${escapeHtml(item.source)}</span></span><span class="list-meta"><span>${escapeHtml(item.imported_at)}</span><span>${item.occurrence_count} 次观察</span><span>${item.unique_observation_count} 条唯一原始记录</span><span>${item.pending_count} 条待审核</span></span></article>`).join("")}</div>` : empty("还没有导入记录");
+  } catch (error) { renderError($("#dialog-content"), error); }
+}
+
 async function exportTransactions(format) {
   try {
     const payload = await request(`/api/v1/exports/transactions?format=${format}`);
@@ -313,6 +339,8 @@ $("#import-button").addEventListener("click", showImportForm);
 $("#export-json-button").addEventListener("click", () => exportTransactions("json"));
 $("#export-csv-button").addEventListener("click", () => exportTransactions("csv"));
 $("#trash-button").addEventListener("click", showTrash);
+$("#archive-export-button").addEventListener("click", exportPortableArchive);
+$("#import-history-button").addEventListener("click", showImportHistory);
 $("#load-more").addEventListener("click", () => { state.transactionPage += 1; loadTransactions(false); });
 $("#apply-dates").addEventListener("click", loadOverview);
 $("#connection-button").addEventListener("click", () => showView("settings"));

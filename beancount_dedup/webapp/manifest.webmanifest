@@ -6,5 +6,9 @@
   "display": "standalone",
   "background_color": "#f3f2ec",
   "theme_color": "#13231c",
-  "lang": "zh-CN"
+  "lang": "zh-CN",
+  "icons": [
+    {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "/maskable-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable"}
+  ]
 }

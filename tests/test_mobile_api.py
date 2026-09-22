@@ -1,6 +1,8 @@
 """Tests for the versioned local-first mobile JSON API."""
 
 import base64
+import io
+import zipfile
 from datetime import date, datetime
 
 import pytest
@@ -66,6 +68,7 @@ def test_bundled_web_client_assets_are_available_and_whitelisted():
     assert script is not None
     assert b"/api/v1/statistics/summary" in script.body
     assert manifest is not None
+    assert load_web_asset("/icon.svg").content_type == "image/svg+xml"
     assert load_web_asset("/../ledger.sqlite3") is None
 
 
@@ -220,12 +223,41 @@ def test_statement_import_and_canonical_export_api(store):
         },
     )
     exported = api.dispatch("GET", "/api/v1/exports/transactions?format=json")
+    history = api.dispatch("GET", "/api/v1/imports")
 
     assert any(item["format_id"] == "alipay.csv" for item in formats.body["data"])
     assert imported.status == 200
     assert imported.body["data"]["parsed_count"] > 0
     assert imported.body["data"]["pending_review_count"] > 0
     assert exported.body["meta"]["format"] == "json"
+    assert history.body["meta"]["total"] == 1
+    assert history.body["data"][0]["occurrence_count"] == 1
+    assert history.body["data"][0]["unique_observation_count"] == 1
+
+
+def test_portable_archive_export_api_contains_complete_manifest(store):
+    api = MobileLedgerApi(store)
+    created = api.dispatch(
+        "POST",
+        "/api/v1/transactions",
+        {
+            "actor": "local-user",
+            "booking_date": "2026-09-22",
+            "amount": "-8",
+            "direction": "expense",
+            "merchant": "归档测试",
+        },
+    )
+
+    exported = api.dispatch("GET", "/api/v1/exports/portable-archive")
+    archive = base64.b64decode(exported.body["data"]["content_base64"])
+
+    assert created.status == 200
+    assert exported.status == 200
+    assert exported.body["data"]["manifest"]["schema_version"] == 9
+    with zipfile.ZipFile(io.BytesIO(archive)) as packaged:
+        assert "manifest.json" in packaged.namelist()
+        assert "data/canonical_events.jsonl" in packaged.namelist()
 
 
 def test_candidate_list_redacts_original_row_and_detail_expands_it(store):

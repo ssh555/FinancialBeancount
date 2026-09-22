@@ -57,7 +57,7 @@ financial-beancount-api --database ledger.sqlite3 --open-browser
 # Or open http://127.0.0.1:8765 manually
 ```
 
-The app provides statistics; canonical transaction creation, search, full editing, auditable soft deletion and restoration, plus JSON/CSV export; official statement import through the adapter registry; transaction details (including all linked sources); and manual review queues for overlapping imports, candidate merges, refunds, and classifications. Its application shell works offline after the first visit; ledger data always comes directly from the local API and is deliberately excluded from browser caches. Immutable raw observations are never deleted by canonical transaction operations.
+The app provides statistics; canonical transaction creation, search, full editing, auditable soft deletion and restoration, plus JSON/CSV export; official statement import and import history through the adapter registry; complete portable archive download; transaction details (including all linked sources); and manual review queues for overlapping imports, candidate merges, refunds, and classifications. Its installable application shell works offline after the first visit; ledger data always comes directly from the local API and is deliberately excluded from browser caches. Immutable raw observations are never deleted by canonical transaction operations.
 
 To access the UI from another device on your private network, bind to the computer's LAN address and set `FINANCIAL_BEANCOUNT_API_TOKEN`. Do not expose the service to the public internet.
 
@@ -260,7 +260,7 @@ financial-beancount-api --database ledger.sqlite3 --open-browser
 # 也可以手动打开 http://127.0.0.1:8765
 ```
 
-界面支持统计概览；唯一交易的新增、搜索、完整修改、可审计软删除与恢复，以及 JSON/CSV 导出；通过适配器注册表导入官方账单；唯一交易详情（含全部关联来源）；以及重叠导入、候选归并、退款和分类的人工审核队列。首次访问后，应用壳层可离线打开；账本数据始终从本地 API 实时读取，并明确排除在浏览器缓存之外。唯一交易的操作永远不会删除不可变的原始观察记录。
+界面支持统计概览；唯一交易的新增、搜索、完整修改、可审计软删除与恢复，以及 JSON/CSV 导出；通过适配器注册表导入官方账单并查看导入历史；下载包含全部数据与审计记录的便携归档；唯一交易详情（含全部关联来源）；以及重叠导入、候选归并、退款和分类的人工审核队列。首次访问后，可安装的应用壳层能够离线打开；账本数据始终从本地 API 实时读取，并明确排除在浏览器缓存之外。唯一交易的操作永远不会删除不可变的原始观察记录。
 
 如需在私人局域网内从另一台设备访问，请绑定电脑的局域网地址并设置 `FINANCIAL_BEANCOUNT_API_TOKEN`。不要把服务直接暴露到公网。
 
