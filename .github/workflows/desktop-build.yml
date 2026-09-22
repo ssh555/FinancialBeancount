@@ -34,6 +34,8 @@ jobs:
           matches = list(output.rglob("manifest.webmanifest"))
           assert matches, "bundled PWA manifest is missing"
           print(matches[0])
+      - name: Verify packaged update helper
+        run: python scripts/smoke_update_helper.py
       - name: Package release asset and checksum
         run: >-
           python scripts/package_desktop_artifact.py

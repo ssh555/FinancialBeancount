@@ -65,7 +65,14 @@ To access the UI from another device on your private network, bind to the comput
 
 An installed Python package also provides a native desktop controller. It creates the ledger under
 the operating system's per-user application-data directory, starts the local service on an available
-loopback port, and opens the web interface:
+loopback port, and opens the web interface. Its **检查更新** button performs an explicitly requested
+check against the project's latest GitHub Release. Downloading and installation each require a
+separate confirmation; the archive is staged outside the application, checked against its published
+SHA-256, safely extracted, and handed to an external helper only after the application exits. The
+helper retains the previous application binaries and rolls back unless the new local service reports
+that it is healthy;
+the ledger database stays in the per-user data directory. Set `FINANCIAL_BEANCOUNT_UPDATE_API=off`
+to disable checks, or set it to an alternative HTTPS metadata endpoint for a downstream build:
 
 ```bash
 financial-beancount
@@ -73,8 +80,9 @@ financial-beancount
 
 Maintainers can produce a self-contained application directory with
 `pyinstaller --clean --noconfirm FinancialBeancount.spec`. The manual GitHub Actions workflow builds
-unsigned Windows, macOS, and Linux artifacts for validation; signed installers and automatic updates
-are release gates and are intentionally not published yet.
+unsigned Windows, macOS, and Linux ZIP artifacts plus SHA-256 manifests for validation. The workflow
+also smoke-tests the packaged update helper. Platform signatures and signed installers remain
+release gates, so downloadable releases are intentionally not published yet.
 
 ## Project Structure
 

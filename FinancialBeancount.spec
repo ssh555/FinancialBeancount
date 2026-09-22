@@ -25,6 +25,34 @@ analysis = Analysis(
 )
 pyz = PYZ(analysis.pure)
 
+helper_analysis = Analysis(
+    ["update_helper_launcher.py"],
+    pathex=[],
+    binaries=[],
+    datas=[],
+    hiddenimports=[],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=excludes,
+    noarchive=False,
+)
+helper_pyz = PYZ(helper_analysis.pure)
+helper_exe = EXE(
+    helper_pyz,
+    helper_analysis.scripts,
+    helper_analysis.binaries,
+    helper_analysis.datas,
+    [],
+    name="FinancialBeancountUpdater",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+)
+
 exe = EXE(
     pyz,
     analysis.scripts,
@@ -41,6 +69,7 @@ exe = EXE(
 
 app = COLLECT(
     exe,
+    helper_exe,
     analysis.binaries,
     analysis.datas,
     strip=False,

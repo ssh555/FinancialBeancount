@@ -36,3 +36,22 @@ not require users to uninstall and reinstall the application:
 
 Release creation remains intentionally deferred until GUI packaging, update behavior, privacy
 review, and end-to-end tests are complete.
+
+### Implemented foundation
+
+- The desktop controller exposes a user-triggered update check; no background request, download, or
+  installation occurs without an explicit confirmation at the corresponding step.
+- Stable release metadata is validated, draft/prerelease entries are ignored, and the update must
+  provide both a matching platform/architecture ZIP and its SHA-256 asset.
+- The default GitHub API source can be disabled or replaced by an HTTPS endpoint through
+  `FINANCIAL_BEANCOUNT_UPDATE_API`.
+- CI produces version-ready platform/architecture ZIP assets and adjacent SHA-256 manifests.
+- Approved downloads stream into a per-user staging directory, enforce declared and maximum sizes,
+  verify the published SHA-256, and reject unsafe ZIP paths, symbolic links, and decompression bombs.
+- A separately packaged helper waits for the running application to exit, retains the previous
+  binaries, swaps the prepared application in place, and starts it. The replacement must report
+  local-server readiness through a one-time health marker; otherwise the helper restores the old
+  version. CI exercises the packaged helper against disposable directories.
+
+Platform signature verification, permission/elevation UX, signed installers, and upgrade testing
+from every published version remain future release batches.
