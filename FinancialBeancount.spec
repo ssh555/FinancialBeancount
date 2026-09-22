@@ -6,6 +6,10 @@ from PyInstaller.utils.hooks import collect_data_files
 
 datas = collect_data_files("beancount_dedup", includes=["webapp/*"])
 hiddenimports = ["beancount_dedup.webapp"]
+# The desktop API has native XLSX/PDF import paths and never uses the legacy
+# pandas converter. PyInstaller otherwise follows optional imports and bundles
+# the development stack, adding tens of megabytes to every release.
+excludes = ["numpy", "pandas", "pytest"]
 
 analysis = Analysis(
     ["desktop_launcher.py"],
@@ -16,7 +20,7 @@ analysis = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
 )
 pyz = PYZ(analysis.pure)

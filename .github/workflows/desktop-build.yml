@@ -10,11 +10,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: FinancialBeancount-windows
+            platform: windows
           - os: macos-latest
-            artifact: FinancialBeancount-macos
+            platform: macos
           - os: ubuntu-latest
-            artifact: FinancialBeancount-linux
+            platform: linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -34,8 +34,13 @@ jobs:
           matches = list(output.rglob("manifest.webmanifest"))
           assert matches, "bundled PWA manifest is missing"
           print(matches[0])
+      - name: Package release asset and checksum
+        run: >-
+          python scripts/package_desktop_artifact.py
+          --source dist/FinancialBeancount
+          --output artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/
+          name: FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}
+          path: artifacts/
           if-no-files-found: error
