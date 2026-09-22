@@ -2,8 +2,11 @@
 
 import base64
 import io
+import json
+import threading
 import zipfile
 from datetime import date, datetime
+from urllib.request import urlopen
 
 import pytest
 from beancount_dedup import mobile_api as mobile_api_module
@@ -86,6 +89,38 @@ def test_cli_can_request_browser_launch(monkeypatch):
     assert received["database_path"] == "test.sqlite3"
     assert received["port"] == 9000
     assert received["open_browser"] is True
+
+
+def test_server_reports_dynamic_port_and_stops_cleanly(tmp_path):
+    ready = threading.Event()
+    stopped = threading.Event()
+    stop = threading.Event()
+    location = {}
+
+    def mark_ready(url):
+        location["url"] = url
+        ready.set()
+
+    def run_server():
+        try:
+            serve_mobile_api(
+                str(tmp_path / "desktop.sqlite3"),
+                port=0,
+                ready_callback=mark_ready,
+                stop_event=stop,
+            )
+        finally:
+            stopped.set()
+
+    thread = threading.Thread(target=run_server, daemon=True)
+    thread.start()
+    assert ready.wait(3)
+    with urlopen(f"{location['url']}/api/v1/health", timeout=3) as response:
+        payload = json.load(response)
+    stop.set()
+
+    assert payload["data"]["status"] == "ok"
+    assert stopped.wait(3)
 
 
 def test_transaction_list_is_compact_but_detail_contains_all_sources(store):

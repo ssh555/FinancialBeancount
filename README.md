@@ -61,6 +61,21 @@ The app provides statistics; canonical transaction creation, search, full editin
 
 To access the UI from another device on your private network, bind to the computer's LAN address and set `FINANCIAL_BEANCOUNT_API_TOKEN`. Do not expose the service to the public internet.
 
+### Desktop Application
+
+An installed Python package also provides a native desktop controller. It creates the ledger under
+the operating system's per-user application-data directory, starts the local service on an available
+loopback port, and opens the web interface:
+
+```bash
+financial-beancount
+```
+
+Maintainers can produce a self-contained application directory with
+`pyinstaller --clean --noconfirm FinancialBeancount.spec`. The manual GitHub Actions workflow builds
+unsigned Windows, macOS, and Linux artifacts for validation; signed installers and automatic updates
+are release gates and are intentionally not published yet.
+
 ## Project Structure
 
 ```
@@ -198,6 +213,7 @@ This tool is provided for educational and personal finance management purposes. 
 - [Beancount Documentation](https://beancount.github.io/docs/)
 - [External Contributions & Tools](https://beancount.github.io/docs/external_contributions.html)
 - [Plain Text Accounting](https://plaintextaccounting.org/)
+- [Upstream source repository](https://github.com/CacinieP/FinancialBeancount)
 
 ---
 
@@ -263,6 +279,19 @@ financial-beancount-api --database ledger.sqlite3 --open-browser
 界面支持统计概览；唯一交易的新增、搜索、完整修改、可审计软删除与恢复，以及 JSON/CSV 导出；通过适配器注册表导入官方账单并查看导入历史；下载包含全部数据与审计记录的便携归档；唯一交易详情（含全部关联来源）；以及重叠导入、候选归并、退款和分类的人工审核队列。首次访问后，可安装的应用壳层能够离线打开；账本数据始终从本地 API 实时读取，并明确排除在浏览器缓存之外。唯一交易的操作永远不会删除不可变的原始观察记录。
 
 如需在私人局域网内从另一台设备访问，请绑定电脑的局域网地址并设置 `FINANCIAL_BEANCOUNT_API_TOKEN`。不要把服务直接暴露到公网。
+
+### 桌面应用
+
+安装 Python 软件包后还会提供原生桌面控制器。它会把账本放入操作系统的当前用户应用数据目录，
+在可用的本机回环端口启动服务并自动打开 Web 界面：
+
+```bash
+financial-beancount
+```
+
+维护者可使用 `pyinstaller --clean --noconfirm FinancialBeancount.spec` 生成自包含应用目录。
+手动触发的 GitHub Actions 工作流可构建未签名的 Windows、macOS 和 Linux 验证产物；带签名安装器和
+自动更新属于正式发布门禁，目前不会提前发布。
 
 ## 项目结构
 
@@ -401,3 +430,4 @@ python example_usage.py
 - [Beancount 文档](https://beancount.github.io/docs/)
 - [外部贡献与工具](https://beancount.github.io/docs/external_contributions.html)
 - [纯文本记账](https://plaintextaccounting.org/)
+- [上游开源仓库](https://github.com/CacinieP/FinancialBeancount)

@@ -1,0 +1,41 @@
+name: Desktop application build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: FinancialBeancount-windows
+          - os: macos-latest
+            artifact: FinancialBeancount-macos
+          - os: ubuntu-latest
+            artifact: FinancialBeancount-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install application build dependencies
+        run: python -m pip install ".[xlsx,pdf]" pyinstaller
+      - name: Build desktop application
+        run: pyinstaller --clean --noconfirm FinancialBeancount.spec
+      - name: Verify bundled web application
+        shell: python
+        run: |
+          from pathlib import Path
+          output = Path("dist")
+          assert output.exists(), output
+          matches = list(output.rglob("manifest.webmanifest"))
+          assert matches, "bundled PWA manifest is missing"
+          print(matches[0])
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+          if-no-files-found: error

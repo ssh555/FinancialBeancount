@@ -17,7 +17,7 @@ from decimal import Decimal
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import parse_qs, urlsplit
 
 from .candidate_review import CandidateReviewEvent, CandidateReviewGroup, CandidateReviewService
@@ -34,6 +34,9 @@ from .transaction_classification import (
     ClassificationEvent,
     TransactionClassificationService,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 API_VERSION = "v1"
 
@@ -508,6 +511,8 @@ def serve_mobile_api(
     port: int = 8765,
     api_token: str | None = None,
     open_browser: bool = False,
+    ready_callback: Callable[[str], None] | None = None,
+    stop_event: threading.Event | None = None,
 ) -> None:
     """Serve the API locally; non-loopback callers should always use a token."""
 
@@ -595,10 +600,17 @@ def serve_mobile_api(
     browser_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
     local_url = f"http://{browser_host}:{actual_port}"
     print(f"FinancialBeancount is running at {local_url}")
+    if ready_callback is not None:
+        ready_callback(local_url)
     if open_browser:
         threading.Timer(0.2, webbrowser.open, args=(local_url,)).start()
     try:
-        server.serve_forever()
+        if stop_event is None:
+            server.serve_forever()
+        else:
+            server.timeout = 0.25
+            while not stop_event.is_set():
+                server.handle_request()
     finally:
         server.server_close()
         store.close()
