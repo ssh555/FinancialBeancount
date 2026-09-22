@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#13231c">
+  <meta name="description" content="纯本地、可审计的个人账单工作台">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+  <title>本地账本</title>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">FINANCIAL BEANCOUNT</p>
+      <h1>本地账本</h1>
+    </div>
+    <button id="connection-button" class="status-pill" type="button" aria-label="连接设置">
+      <span id="connection-dot"></span><span id="connection-label">正在连接</span>
+    </button>
+  </header>
+
+  <main id="app" tabindex="-1">
+    <section id="overview-view" class="view active" aria-labelledby="overview-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">概览</p><h2 id="overview-title">财务快照</h2></div>
+        <button class="icon-button" data-action="refresh" type="button" aria-label="刷新">↻</button>
+      </div>
+      <div class="date-filter card">
+        <label>开始日期<input id="date-from" type="date"></label>
+        <label>结束日期<input id="date-to" type="date"></label>
+        <button id="apply-dates" class="button secondary" type="button">应用</button>
+      </div>
+      <div id="summary-cards" class="summary-grid" aria-live="polite"></div>
+      <section class="card">
+        <div class="card-heading"><h3>支出分类</h3><span id="category-total" class="muted"></span></div>
+        <div id="category-list" class="category-list"></div>
+      </section>
+      <section class="card privacy-note">
+        <span class="privacy-icon">⌂</span>
+        <div><h3>数据只在你的设备上</h3><p>界面与账本 API 均由本机提供，不依赖外部服务。</p></div>
+      </section>
+    </section>
+
+    <section id="transactions-view" class="view" aria-labelledby="transactions-title">
+      <div class="section-heading"><div><p class="eyebrow">唯一交易层</p><h2 id="transactions-title">交易</h2></div>
+        <div class="heading-actions"><button id="import-button" class="button secondary" type="button">导入</button><button id="add-button" class="button primary" type="button">记一笔</button></div>
+      </div>
+      <form id="transaction-filter" class="search-row">
+        <input id="transaction-search" type="search" placeholder="搜索商户、备注…" aria-label="搜索交易">
+        <button class="button secondary" type="submit">搜索</button>
+      </form>
+      <div id="transaction-list" class="stack-list" aria-live="polite"></div>
+      <button id="load-more" class="button secondary wide hidden" type="button">加载更多</button>
+      <button id="export-button" class="button secondary wide export-button" type="button">导出唯一交易 JSON</button>
+    </section>
+
+    <section id="review-view" class="view" aria-labelledby="review-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">完整人工审核</p><h2 id="review-title">待处理</h2></div>
+        <button class="icon-button" data-action="refresh" type="button" aria-label="刷新">↻</button>
+      </div>
+      <div id="review-tabs" class="segmented" role="tablist">
+        <button class="active" data-review="imports" role="tab" type="button">导入 <span id="count-imports">0</span></button>
+        <button data-review="matches" role="tab" type="button">归并 <span id="count-matches">0</span></button>
+        <button data-review="refunds" role="tab" type="button">退款 <span id="count-refunds">0</span></button>
+        <button data-review="classifications" role="tab" type="button">分类 <span id="count-classifications">0</span></button>
+      </div>
+      <div id="review-list" class="stack-list" aria-live="polite"></div>
+    </section>
+
+    <section id="settings-view" class="view" aria-labelledby="settings-title">
+      <div class="section-heading"><div><p class="eyebrow">设备设置</p><h2 id="settings-title">连接</h2></div></div>
+      <form id="settings-form" class="card settings-form">
+        <label>API 地址<input id="api-base" inputmode="url" placeholder="留空使用当前地址"></label>
+        <label>访问令牌<input id="api-token" type="password" autocomplete="off" placeholder="仅跨设备访问时需要"></label>
+        <label>审核人<input id="review-actor" required value="local-user"></label>
+        <p class="muted">令牌仅保存在当前浏览器会话，不写入账本或离线缓存。</p>
+        <button class="button primary" type="submit">保存并测试</button>
+      </form>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="主导航">
+    <button class="active" data-view="overview" type="button"><span>◫</span>概览</button>
+    <button data-view="transactions" type="button"><span>≡</span>交易</button>
+    <button data-view="review" type="button"><span>✓</span>审核 <b id="review-badge" class="badge hidden">0</b></button>
+    <button data-view="settings" type="button"><span>⚙</span>设置</button>
+  </nav>
+
+  <dialog id="detail-dialog">
+    <div class="dialog-bar"><h2 id="dialog-title">详情</h2><button id="dialog-close" class="icon-button" type="button" aria-label="关闭">×</button></div>
+    <div id="dialog-content"></div>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

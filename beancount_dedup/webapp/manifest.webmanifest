@@ -1,0 +1,10 @@
+{
+  "name": "FinancialBeancount 本地账本",
+  "short_name": "本地账本",
+  "description": "纯本地、可审计的统一账单工作台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f2ec",
+  "theme_color": "#13231c",
+  "lang": "zh-CN"
+}

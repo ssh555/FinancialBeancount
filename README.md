@@ -19,6 +19,8 @@
 
 ## Features
 
+- **Bundled local web app**: Mobile-first dashboard, unique transaction browser, and complete review queues with no cloud dependency
+- **Installable offline shell**: The local UI can be installed from a modern browser as a PWA; sensitive API responses are never cached
 - **Three-level fingerprint deduplication**: L1 (exact) / L2 (loose) / L3 (fuzzy) matching strategies
 - **Multi-format support**: CSV, XLSX, PDF auto-conversion
 - **Smart account classification**: Auto-classification based on Beancount best practices
@@ -45,6 +47,19 @@ python example_usage.py
 # output/output.beancount        - Deduplicated transactions
 # output/duplicate_report.beancount - Duplicate transaction report
 ```
+
+### Local Web App
+
+The installed package includes a responsive web client served by the local API:
+
+```bash
+financial-beancount-api --database ledger.sqlite3
+# Open http://127.0.0.1:8765
+```
+
+The app provides statistics; canonical transaction creation, search, editing, auditable soft deletion, and JSON export; official statement import through the adapter registry; transaction details (including all linked sources); and manual review queues for overlapping imports, candidate merges, refunds, and classifications. Its application shell works offline after the first visit; ledger data always comes directly from the local API and is deliberately excluded from browser caches. Immutable raw observations are never deleted by canonical transaction operations.
+
+To access the UI from another device on your private network, bind to the computer's LAN address and set `FINANCIAL_BEANCOUNT_API_TOKEN`. Do not expose the service to the public internet.
 
 ## Project Structure
 
@@ -207,6 +222,8 @@ This tool is provided for educational and personal finance management purposes. 
 
 ## 功能特性
 
+- **内置本地 Web 应用**：移动端优先的统计概览、唯一交易浏览和完整人工审核队列，不依赖云服务
+- **可安装离线壳层**：现代浏览器可将本地界面安装为 PWA；敏感 API 响应不会进入离线缓存
 - **三级哈希指纹去重**：L1(精确) / L2(宽松) / L3(模糊) 匹配策略
 - **多格式支持**：CSV、XLSX、PDF 自动转换
 - **智能账户分类**：基于 Beancount 最佳实践的自动分类
@@ -233,6 +250,19 @@ python example_usage.py
 # output/output.beancount        - 去重后的交易
 # output/duplicate_report.beancount - 重复交易报告
 ```
+
+### 本地 Web 应用
+
+安装后的软件包自带响应式界面，由本地 API 直接提供：
+
+```bash
+financial-beancount-api --database ledger.sqlite3
+# 浏览器打开 http://127.0.0.1:8765
+```
+
+界面支持统计概览；唯一交易的新增、搜索、修改、可审计软删除和 JSON 导出；通过适配器注册表导入官方账单；唯一交易详情（含全部关联来源）；以及重叠导入、候选归并、退款和分类的人工审核队列。首次访问后，应用壳层可离线打开；账本数据始终从本地 API 实时读取，并明确排除在浏览器缓存之外。唯一交易的操作永远不会删除不可变的原始观察记录。
+
+如需在私人局域网内从另一台设备访问，请绑定电脑的局域网地址并设置 `FINANCIAL_BEANCOUNT_API_TOKEN`。不要把服务直接暴露到公网。
 
 ## 项目结构
 

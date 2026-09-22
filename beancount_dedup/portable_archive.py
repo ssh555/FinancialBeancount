@@ -30,6 +30,8 @@ TABLE_ORDER = (
     "transaction_relationship_events",
     "classification_candidates",
     "classification_events",
+    "canonical_deletions",
+    "canonical_events",
 )
 
 

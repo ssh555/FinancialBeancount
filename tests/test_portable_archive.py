@@ -49,6 +49,16 @@ def populated_store(path):
 
 def test_portable_archive_round_trip_preserves_raw_canonical_and_audit(tmp_path):
     source, result, item = populated_store(tmp_path / "source.sqlite3")
+    source_canonical = source.find_canonical_for_raw(result.raw_transaction.raw_id)
+    assert source_canonical is not None
+    source.record_canonical_event(
+        source_canonical.canonical_id,
+        "updated",
+        {"notes": ""},
+        {"notes": "已核对"},
+        "local-user",
+    )
+    source.soft_delete_canonical(source_canonical.canonical_id, "local-user", "archive-test")
     archive = tmp_path / "ledger.financial.zip"
     manifest = export_portable_archive(source, archive)
     source.close()
@@ -64,6 +74,11 @@ def test_portable_archive_round_trip_preserves_raw_canonical_and_audit(tmp_path)
         assert restored_raw.original_row == {"脱敏字段": "原始值"}
         assert canonical is not None
         assert canonical.source_count == 1
+        assert restored.is_canonical_deleted(canonical.canonical_id)
+        assert [event["action"] for event in restored.list_canonical_events(canonical.canonical_id)] == [
+            "updated",
+            "deleted",
+        ]
         assert events[0].actor == "local-user"
         assert manifest.tables["raw_transactions"]["rows"] == 1
     finally:

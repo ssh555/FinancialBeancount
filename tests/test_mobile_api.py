@@ -1,12 +1,13 @@
 """Tests for the versioned local-first mobile JSON API."""
 
+import base64
 from datetime import date, datetime
 
 import pytest
 from beancount_dedup.canonical_matcher import ConservativeMatcher
 from beancount_dedup.ledger_models import CanonicalTransaction, RawTransaction
 from beancount_dedup.ledger_store import LedgerStore
-from beancount_dedup.mobile_api import MobileLedgerApi, serve_mobile_api
+from beancount_dedup.mobile_api import MobileLedgerApi, load_web_asset, serve_mobile_api
 from beancount_dedup.models import Platform, TransactionType
 from beancount_dedup.review import ImportReviewService
 
@@ -51,6 +52,20 @@ def test_health_and_unknown_route(store):
     assert health.body["data"]["api_version"] == "v1"
     assert missing.status == 404
     assert missing.body["error"]["code"] == "not_found"
+
+
+def test_bundled_web_client_assets_are_available_and_whitelisted():
+    index = load_web_asset("/")
+    script = load_web_asset("/app.js")
+    manifest = load_web_asset("/manifest.webmanifest")
+
+    assert index is not None
+    assert index.content_type == "text/html; charset=utf-8"
+    assert "本地账本".encode() in index.body
+    assert script is not None
+    assert b"/api/v1/statistics/summary" in script.body
+    assert manifest is not None
+    assert load_web_asset("/../ledger.sqlite3") is None
 
 
 def test_transaction_list_is_compact_but_detail_contains_all_sources(store):
@@ -114,6 +129,83 @@ def test_transaction_list_supports_generic_filters(store):
     assert response.status == 200
     assert response.body["meta"]["total"] == 1
     assert response.body["data"][0]["canonical_id"] == matching.canonical_id
+
+
+def test_transaction_crud_uses_soft_delete_and_audit_events(store):
+    api = MobileLedgerApi(store)
+    created = api.dispatch(
+        "POST",
+        "/api/v1/transactions",
+        {
+            "actor": "local-user",
+            "booking_date": "2026-09-22",
+            "amount": "-18.50",
+            "direction": "expense",
+            "merchant": "手工记录",
+            "category": "餐饮",
+            "tx_type": "expense",
+        },
+    )
+    canonical_id = created.body["data"]["canonical_id"]
+
+    updated = api.dispatch(
+        "PATCH",
+        f"/api/v1/transactions/{canonical_id}",
+        {"actor": "local-user", "changes": {"merchant": "修正后的商户"}},
+    )
+    deleted = api.dispatch(
+        "DELETE",
+        f"/api/v1/transactions/{canonical_id}",
+        {"actor": "local-user", "reason": "录入错误"},
+    )
+    hidden = api.dispatch("GET", f"/api/v1/transactions/{canonical_id}")
+    listing = api.dispatch("GET", "/api/v1/transactions")
+    restored = api.dispatch(
+        "POST", f"/api/v1/transactions/{canonical_id}/restore", {"actor": "local-user"}
+    )
+    events = api.dispatch("GET", f"/api/v1/transactions/{canonical_id}/events")
+
+    assert created.status == 200
+    assert updated.body["data"]["merchant"] == "修正后的商户"
+    assert deleted.body["data"]["deleted"] is True
+    assert hidden.status == 404
+    assert listing.body["meta"]["total"] == 0
+    assert restored.body["data"]["canonical_id"] == canonical_id
+    assert [item["action"] for item in events.body["data"]] == [
+        "created",
+        "updated",
+        "deleted",
+        "restored",
+    ]
+
+
+def test_statement_import_and_canonical_export_api(store):
+    api = MobileLedgerApi(store)
+    sample = (
+        "支付宝交易记录明细查询\n"
+        "交易时间,交易分类,交易对方,商品说明,收/支,金额,收/付款方式,交易状态,"
+        "交易订单号,商家订单号\n"
+        "2026-09-01 08:30:00,餐饮美食,测试早餐店,早餐,支出,18.50,余额,交易成功,"
+        "202609010001,MERCHANT001\n"
+    ).encode("utf-8-sig")
+    formats = api.dispatch("GET", "/api/v1/import-formats")
+    imported = api.dispatch(
+        "POST",
+        "/api/v1/imports",
+        {
+            "format_id": "alipay.csv",
+            "source_account": "test-account",
+            "filename": "sample_alipay.csv",
+            "content_base64": base64.b64encode(sample).decode(),
+        },
+    )
+    exported = api.dispatch("GET", "/api/v1/exports/transactions?format=json")
+
+    assert any(item["format_id"] == "alipay.csv" for item in formats.body["data"])
+    assert imported.status == 200
+    assert imported.body["data"]["parsed_count"] > 0
+    assert imported.body["data"]["pending_review_count"] > 0
+    assert exported.body["meta"]["format"] == "json"
 
 
 def test_candidate_list_redacts_original_row_and_detail_expands_it(store):

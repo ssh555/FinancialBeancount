@@ -3,20 +3,28 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
+import importlib.resources
 import json
 import os
+import tempfile
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
 from .candidate_review import CandidateReviewEvent, CandidateReviewGroup, CandidateReviewService
-from .ledger_models import CanonicalTransaction, RawTransaction
+from .ledger_models import CanonicalTransaction, RawTransaction, ReviewStatus
 from .ledger_store import SCHEMA_VERSION, LedgerStore
+from .models import TransactionType
 from .refund_relationships import RefundCandidate, RefundRelationshipService, RefundReviewEvent
 from .review import ImportReviewService, ReviewEvent, ReviewItem, ReviewSession
+from .statement_importer import StatementImporter
 from .statistics import StatisticsService
 from .transaction_classification import (
     ClassificationCandidate,
@@ -33,6 +41,35 @@ class ApiResponse:
     body: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class WebAssetResponse:
+    """A bundled web asset that can be served without an external web server."""
+
+    content_type: str
+    body: bytes
+
+
+_WEB_ASSETS = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/index.html": ("index.html", "text/html; charset=utf-8"),
+    "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/styles.css": ("styles.css", "text/css; charset=utf-8"),
+    "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
+    "/service-worker.js": ("service-worker.js", "text/javascript; charset=utf-8"),
+}
+
+
+def load_web_asset(path: str) -> WebAssetResponse | None:
+    """Load a whitelisted UI asset from the installed package."""
+
+    asset = _WEB_ASSETS.get(path)
+    if asset is None:
+        return None
+    filename, content_type = asset
+    body = importlib.resources.files("beancount_dedup.webapp").joinpath(filename).read_bytes()
+    return WebAssetResponse(content_type, body)
+
+
 class MobileLedgerApi:
     """Framework-independent API contract shared by tests and the HTTP server."""
 
@@ -43,6 +80,7 @@ class MobileLedgerApi:
         self.refund_review = RefundRelationshipService(store)
         self.classification_review = TransactionClassificationService(store)
         self.statistics = StatisticsService(store)
+        self.statement_importer = StatementImporter(store)
 
     def dispatch(  # noqa: PLR0911
         self,
@@ -66,8 +104,16 @@ class MobileLedgerApi:
                 )
             if method == "GET" and path == "/api/v1/transactions":
                 return self._list_transactions(query)
-            if method == "GET" and path.startswith("/api/v1/transactions/"):
-                return self._transaction_detail(path.rsplit("/", 1)[-1])
+            if method == "POST" and path == "/api/v1/transactions":
+                return self._create_transaction(body or {})
+            if path.startswith("/api/v1/transactions/"):
+                return self._transaction_route(method, path, body or {})
+            if method == "GET" and path == "/api/v1/import-formats":
+                return self._ok(list(self.statement_importer.supported_formats()))
+            if method == "POST" and path == "/api/v1/imports":
+                return self._import_statement(body or {})
+            if method == "GET" and path == "/api/v1/exports/transactions":
+                return self._export_transactions(query)
             if method == "GET" and path == "/api/v1/statistics/summary":
                 report = self.statistics.summarize(
                     _optional_date(query, "date_from"), _optional_date(query, "date_to")
@@ -128,9 +174,108 @@ class MobileLedgerApi:
 
     def _transaction_detail(self, canonical_id: str) -> ApiResponse:
         canonical = self.store.get_canonical(canonical_id)
-        if canonical is None:
+        if canonical is None or self.store.is_canonical_deleted(canonical_id):
             raise KeyError(canonical_id)
         return self._ok(canonical.to_dict(include_sources=True))
+
+    def _transaction_route(  # noqa: PLR0911
+        self, method: str, path: str, body: dict[str, Any]
+    ) -> ApiResponse:
+        parts = path.split("/")
+        canonical_id = parts[4] if len(parts) > 4 else ""
+        action = parts[5] if len(parts) > 5 else ""
+        if not canonical_id:
+            raise KeyError(canonical_id)
+        if method == "GET" and action == "events":
+            if self.store.get_canonical(canonical_id) is None:
+                raise KeyError(canonical_id)
+            return self._ok(self.store.list_canonical_events(canonical_id))
+        if method == "POST" and action == "restore":
+            actor = _required_actor(body)
+            self.store.restore_canonical(canonical_id, actor)
+            restored = self.store.get_canonical(canonical_id)
+            if restored is None:
+                raise KeyError(canonical_id)
+            return self._ok(restored.to_dict(include_sources=True))
+        if action:
+            return self._error(HTTPStatus.NOT_FOUND, "not_found", "API route not found")
+        if method == "GET":
+            return self._transaction_detail(canonical_id)
+        if method == "PATCH":
+            return self._update_transaction(canonical_id, body)
+        if method == "DELETE":
+            actor = _required_actor(body)
+            reason = body.get("reason", "")
+            if not isinstance(reason, str):
+                raise TypeError("reason must be a string")
+            self.store.soft_delete_canonical(canonical_id, actor, reason.strip())
+            return self._ok({"canonical_id": canonical_id, "deleted": True})
+        return self._error(HTTPStatus.NOT_FOUND, "not_found", "API route not found")
+
+    def _create_transaction(self, body: dict[str, Any]) -> ApiResponse:
+        actor = _required_actor(body)
+        transaction = _canonical_from_request(body)
+        self.store.add_canonical_with_event(transaction, actor)
+        after = transaction.to_dict(include_sources=True)
+        return self._ok(after)
+
+    def _update_transaction(self, canonical_id: str, body: dict[str, Any]) -> ApiResponse:
+        actor = _required_actor(body)
+        current = self.store.get_canonical(canonical_id)
+        if current is None or self.store.is_canonical_deleted(canonical_id):
+            raise KeyError(canonical_id)
+        changes = body.get("changes")
+        if not isinstance(changes, dict) or not changes:
+            raise ValueError("changes must be a non-empty object")
+        if not all(isinstance(key, str) and (isinstance(value, str) or value is None) for key, value in changes.items()):
+            raise TypeError("change values must be strings or null")
+        _validate_transaction_changes(changes)
+        updated = self.store.update_canonical_with_event(canonical_id, changes, actor)
+        after = updated.to_dict(include_sources=True)
+        return self._ok(after)
+
+    def _import_statement(self, body: dict[str, Any]) -> ApiResponse:
+        format_id = _required_text(body, "format_id")
+        source_account = _required_text(body, "source_account")
+        filename = Path(_required_text(body, "filename")).name
+        encoded = _required_text(body, "content_base64")
+        try:
+            content = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError("content_base64 is invalid") from exc
+        if len(content) > 50 * 1024 * 1024:
+            raise ValueError("statement file exceeds the 50 MiB limit")
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_path = Path(directory) / filename
+            temporary_path.write_bytes(content)
+            options = body.get("options", {})
+            if not isinstance(options, dict):
+                raise TypeError("options must be an object")
+            summary = self.statement_importer.import_statement(
+                format_id, temporary_path, source_account, **options
+            )
+        return self._ok(
+            {
+                "batch_id": summary.batch_id,
+                "import_run_id": summary.import_run_id,
+                "source": summary.source.value,
+                "parsed_count": summary.parsed_count,
+                "created_count": summary.created_count,
+                "existing_count": summary.existing_count,
+                "file_already_imported": summary.file_already_imported,
+                "review_session_id": summary.review_session_id,
+                "pending_review_count": summary.pending_review_count,
+                "missing_prior_count": summary.missing_prior_count,
+                "duplicate_occurrence_count": summary.duplicate_occurrence_count,
+            }
+        )
+
+    def _export_transactions(self, query: dict[str, list[str]]) -> ApiResponse:
+        transactions = self.store.list_canonical()
+        return self._ok(
+            [item.to_dict(include_sources=False) for item in transactions],
+            {"format": query.get("format", ["json"])[0], "total": len(transactions)},
+        )
 
     def _list_candidates(self, query: dict[str, list[str]]) -> ApiResponse:
         page, page_size = _pagination(query)
@@ -331,7 +476,17 @@ def serve_mobile_api(
         def do_POST(self) -> None:
             self._dispatch()
 
+        def do_PATCH(self) -> None:
+            self._dispatch()
+
+        def do_DELETE(self) -> None:
+            self._dispatch()
+
         def _dispatch(self) -> None:
+            asset = load_web_asset(urlsplit(self.path).path)
+            if self.command == "GET" and asset is not None:
+                self._write_asset(asset)
+                return
             if api_token and self.headers.get("Authorization") != f"Bearer {api_token}":
                 self._write(
                     ApiResponse(
@@ -342,7 +497,17 @@ def serve_mobile_api(
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
+                if length > 70 * 1024 * 1024:
+                    self._write(
+                        ApiResponse(
+                            HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                            {"error": {"code": "request_too_large", "message": "request body exceeds 70 MiB"}},
+                        )
+                    )
+                    return
                 request_body = json.loads(self.rfile.read(length)) if length else None
+                if request_body is not None and not isinstance(request_body, dict):
+                    raise ValueError("JSON body must be an object")
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
                 self._write(
                     ApiResponse(
@@ -352,6 +517,19 @@ def serve_mobile_api(
                 )
                 return
             self._write(api.dispatch(self.command, self.path, request_body))
+
+        def _write_asset(self, asset: WebAssetResponse) -> None:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", asset.content_type)
+            self.send_header("Content-Length", str(len(asset.body)))
+            if self.path == "/service-worker.js":
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Service-Worker-Allowed", "/")
+            else:
+                self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(asset.body)
 
         def _write(self, response: ApiResponse) -> None:
             payload = json.dumps(response.body, ensure_ascii=False, default=str).encode("utf-8")
@@ -471,6 +649,74 @@ def _required_actor(body: dict[str, Any]) -> str:
     if not isinstance(actor, str) or not actor.strip():
         raise ValueError("actor is required")
     return actor.strip()
+
+
+def _required_text(body: dict[str, Any], name: str) -> str:
+    value = body.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} is required")
+    return value.strip()
+
+
+def _canonical_from_request(body: dict[str, Any]) -> CanonicalTransaction:
+    booking_date = _required_text(body, "booking_date")
+    amount = _required_text(body, "amount")
+    direction = _required_text(body, "direction")
+    merchant = _required_text(body, "merchant")
+    transaction_time = body.get("transaction_time")
+    if transaction_time is not None and not isinstance(transaction_time, str):
+        raise TypeError("transaction_time must be a string or null")
+    try:
+        parsed_date = date.fromisoformat(booking_date)
+        parsed_time = datetime.fromisoformat(transaction_time) if transaction_time else None
+        parsed_amount = Decimal(amount)
+        tx_type = TransactionType(body.get("tx_type", "unknown"))
+    except (ValueError, ArithmeticError) as exc:
+        raise ValueError(f"invalid transaction value: {exc}") from exc
+    if direction not in {"expense", "income"}:
+        raise ValueError("direction must be expense or income")
+    if not parsed_amount.is_finite():
+        raise ValueError("amount must be finite")
+    return CanonicalTransaction(
+        transaction_time=parsed_time,
+        booking_date=parsed_date,
+        amount=parsed_amount,
+        direction=direction,
+        merchant=merchant,
+        normalized_merchant=_optional_body_text(body, "normalized_merchant"),
+        category=_optional_body_text(body, "category"),
+        payment_channel=_optional_body_text(body, "payment_channel"),
+        funding_account=_optional_body_text(body, "funding_account"),
+        tx_type=tx_type,
+        status=_optional_body_text(body, "status"),
+        review_status=ReviewStatus.CONFIRMED,
+        notes=_optional_body_text(body, "notes"),
+    )
+
+
+def _optional_body_text(body: dict[str, Any], name: str) -> str:
+    value = body.get(name, "")
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    return value.strip()
+
+
+def _validate_transaction_changes(changes: dict[str, Any]) -> None:
+    try:
+        if changes.get("booking_date") is not None:
+            date.fromisoformat(changes["booking_date"])
+        if changes.get("transaction_time") is not None:
+            datetime.fromisoformat(changes["transaction_time"])
+        if changes.get("amount") is not None and not Decimal(changes["amount"]).is_finite():
+            raise ValueError("amount must be finite")
+        if changes.get("tx_type") is not None:
+            TransactionType(changes["tx_type"])
+        if changes.get("review_status") is not None:
+            ReviewStatus(changes["review_status"])
+    except (ValueError, ArithmeticError) as exc:
+        raise ValueError(f"invalid transaction change: {exc}") from exc
+    if changes.get("direction") not in {None, "expense", "income"}:
+        raise ValueError("direction must be expense or income")
 
 
 def _review_session_dict(session: ReviewSession, store: LedgerStore) -> dict[str, Any]:
@@ -615,3 +861,7 @@ def _classification_event_dict(event: ClassificationEvent) -> dict[str, Any]:
         "actor": event.actor,
         "created_at": event.created_at.isoformat(),
     }
+
+
+if __name__ == "__main__":
+    main()

@@ -3,6 +3,9 @@
 # 用户数据文件夹（包含真实账单，不要提交）
 input/
 output/
+*.sqlite3
+*.sqlite3-*
+*.financial-beancount.zip
 
 # 测试输出文件夹
 test_output/

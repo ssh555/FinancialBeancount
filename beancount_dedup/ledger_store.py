@@ -23,7 +23,7 @@ from .ledger_models import (
 )
 from .models import Platform, TransactionType
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 @dataclass(frozen=True)
@@ -347,6 +347,30 @@ class LedgerStore:
                     FOREIGN KEY (candidate_id)
                         REFERENCES classification_candidates(candidate_id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS canonical_deletions (
+                    canonical_id TEXT PRIMARY KEY,
+                    actor TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    deleted_at TEXT NOT NULL,
+                    FOREIGN KEY (canonical_id)
+                        REFERENCES canonical_transactions(canonical_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS canonical_events (
+                    event_id TEXT PRIMARY KEY,
+                    canonical_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    before_json TEXT NOT NULL,
+                    after_json TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (canonical_id)
+                        REFERENCES canonical_transactions(canonical_id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_canonical_events_transaction
+                    ON canonical_events(canonical_id, created_at);
                 """
             )
             connection.execute(
@@ -565,6 +589,23 @@ class LedgerStore:
         with self.transaction() as connection:
             self._insert_canonical(connection, canonical)
 
+    def add_canonical_with_event(self, canonical: CanonicalTransaction, actor: str) -> None:
+        """Store a manually created transaction and its audit event atomically."""
+
+        now = datetime.now()
+        after = canonical.to_dict(include_sources=True)
+        with self.transaction() as connection:
+            self._insert_canonical(connection, canonical)
+            self._insert_canonical_event(
+                connection,
+                canonical.canonical_id,
+                "created",
+                {},
+                after,
+                actor,
+                now,
+            )
+
     def _insert_canonical(
         self, connection: sqlite3.Connection, canonical: CanonicalTransaction
     ) -> None:
@@ -657,7 +698,13 @@ class LedgerStore:
         """Return one row per economic transaction for list and statistics views."""
 
         rows = self.connection.execute(
-            "SELECT * FROM canonical_transactions ORDER BY booking_date DESC, transaction_time DESC"
+            """
+            SELECT canonical.* FROM canonical_transactions AS canonical
+            LEFT JOIN canonical_deletions AS deletions
+              ON deletions.canonical_id = canonical.canonical_id
+            WHERE deletions.canonical_id IS NULL
+            ORDER BY booking_date DESC, transaction_time DESC
+            """
         ).fetchall()
         return [self._canonical_from_row(row) for row in rows]
 
@@ -676,7 +723,10 @@ class LedgerStore:
 
         if limit < 1 or offset < 0:
             raise ValueError("limit must be positive and offset must not be negative")
-        clauses: list[str] = []
+        clauses: list[str] = [
+            "NOT EXISTS (SELECT 1 FROM canonical_deletions AS deletions "
+            "WHERE deletions.canonical_id = canonical_transactions.canonical_id)"
+        ]
         parameters: list[object] = []
         if date_from:
             clauses.append("booking_date >= ?")
@@ -748,6 +798,140 @@ class LedgerStore:
         if updated is None:
             raise KeyError(canonical_id)
         return updated
+
+    def update_canonical_with_event(
+        self, canonical_id: str, changes: dict[str, str | None], actor: str
+    ) -> CanonicalTransaction:
+        """Update a visible transaction and append its audit event atomically."""
+
+        current = self.get_canonical(canonical_id)
+        if current is None:
+            raise KeyError(canonical_id)
+        before = current.to_dict(include_sources=True)
+        with self.transaction() as connection:
+            self._update_canonical_fields(connection, canonical_id, changes)
+            updated = self.get_canonical(canonical_id)
+            if updated is None:
+                raise KeyError(canonical_id)
+            self._insert_canonical_event(
+                connection,
+                canonical_id,
+                "updated",
+                before,
+                updated.to_dict(include_sources=True),
+                actor,
+                datetime.now(),
+            )
+        return updated
+
+    def is_canonical_deleted(self, canonical_id: str) -> bool:
+        return (
+            self.connection.execute(
+                "SELECT 1 FROM canonical_deletions WHERE canonical_id = ?", (canonical_id,)
+            ).fetchone()
+            is not None
+        )
+
+    def soft_delete_canonical(self, canonical_id: str, actor: str, reason: str = "") -> None:
+        """Hide a canonical transaction while retaining it, its sources, and an audit event."""
+
+        canonical = self.get_canonical(canonical_id)
+        if canonical is None:
+            raise KeyError(canonical_id)
+        if self.is_canonical_deleted(canonical_id):
+            raise ValueError("transaction is already deleted")
+        now = datetime.now()
+        before = canonical.to_dict(include_sources=True)
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT INTO canonical_deletions(canonical_id, actor, reason, deleted_at) "
+                "VALUES (?, ?, ?, ?)",
+                (canonical_id, actor, reason, now.isoformat()),
+            )
+            self._insert_canonical_event(
+                connection, canonical_id, "deleted", before, {"deleted": True, "reason": reason}, actor, now
+            )
+
+    def restore_canonical(self, canonical_id: str, actor: str) -> None:
+        """Restore a soft-deleted canonical transaction and retain the audit trail."""
+
+        row = self.connection.execute(
+            "SELECT * FROM canonical_deletions WHERE canonical_id = ?", (canonical_id,)
+        ).fetchone()
+        if row is None:
+            raise ValueError("transaction is not deleted")
+        now = datetime.now()
+        with self.transaction() as connection:
+            connection.execute(
+                "DELETE FROM canonical_deletions WHERE canonical_id = ?", (canonical_id,)
+            )
+            self._insert_canonical_event(
+                connection,
+                canonical_id,
+                "restored",
+                {"deleted": True, "reason": row["reason"]},
+                {"deleted": False},
+                actor,
+                now,
+            )
+
+    def record_canonical_event(
+        self,
+        canonical_id: str,
+        action: str,
+        before: dict[str, object],
+        after: dict[str, object],
+        actor: str,
+    ) -> None:
+        with self.transaction() as connection:
+            self._insert_canonical_event(
+                connection, canonical_id, action, before, after, actor, datetime.now()
+            )
+
+    def list_canonical_events(self, canonical_id: str) -> list[dict[str, object]]:
+        rows = self.connection.execute(
+            "SELECT * FROM canonical_events WHERE canonical_id = ? ORDER BY created_at, event_id",
+            (canonical_id,),
+        ).fetchall()
+        return [
+            {
+                "event_id": row["event_id"],
+                "canonical_id": row["canonical_id"],
+                "action": row["action"],
+                "before": json.loads(row["before_json"]),
+                "after": json.loads(row["after_json"]),
+                "actor": row["actor"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    @staticmethod
+    def _insert_canonical_event(  # noqa: PLR0917
+        connection: sqlite3.Connection,
+        canonical_id: str,
+        action: str,
+        before: dict[str, object],
+        after: dict[str, object],
+        actor: str,
+        created_at: datetime,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO canonical_events(
+                event_id, canonical_id, action, before_json, after_json, actor, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                canonical_id,
+                action,
+                json.dumps(before, ensure_ascii=False, sort_keys=True, default=str),
+                json.dumps(after, ensure_ascii=False, sort_keys=True, default=str),
+                actor,
+                created_at.isoformat(),
+            ),
+        )
 
     def _update_canonical_fields(
         self,
