@@ -761,6 +761,38 @@ class LedgerStore:
         ).fetchall()
         return [self._canonical_from_row(row) for row in rows], total
 
+    def list_deleted_canonical_page(
+        self, *, limit: int, offset: int
+    ) -> tuple[list[tuple[CanonicalTransaction, dict[str, str]]], int]:
+        """Return soft-deleted transactions with deletion metadata."""
+
+        if limit < 1 or offset < 0:
+            raise ValueError("limit must be positive and offset must not be negative")
+        total = self.connection.execute("SELECT COUNT(*) FROM canonical_deletions").fetchone()[0]
+        rows = self.connection.execute(
+            """
+            SELECT canonical.*, deletions.actor AS deleted_by,
+                   deletions.reason AS deletion_reason, deletions.deleted_at
+            FROM canonical_deletions AS deletions
+            JOIN canonical_transactions AS canonical
+              ON canonical.canonical_id = deletions.canonical_id
+            ORDER BY deletions.deleted_at DESC, canonical.canonical_id
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        ).fetchall()
+        return [
+            (
+                self._canonical_from_row(row),
+                {
+                    "deleted_by": row["deleted_by"],
+                    "deletion_reason": row["deletion_reason"],
+                    "deleted_at": row["deleted_at"],
+                },
+            )
+            for row in rows
+        ], total
+
     def find_canonical_for_raw(self, raw_id: str) -> CanonicalTransaction | None:
         row = self.connection.execute(
             "SELECT canonical_id FROM source_record_links WHERE raw_id = ?", (raw_id,)

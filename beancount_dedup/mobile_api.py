@@ -9,6 +9,8 @@ import importlib.resources
 import json
 import os
 import tempfile
+import threading
+import webbrowser
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -106,6 +108,8 @@ class MobileLedgerApi:
                 return self._list_transactions(query)
             if method == "POST" and path == "/api/v1/transactions":
                 return self._create_transaction(body or {})
+            if method == "GET" and path == "/api/v1/deleted-transactions":
+                return self._list_deleted_transactions(query)
             if path.startswith("/api/v1/transactions/"):
                 return self._transaction_route(method, path, body or {})
             if method == "GET" and path == "/api/v1/import-formats":
@@ -177,6 +181,19 @@ class MobileLedgerApi:
         if canonical is None or self.store.is_canonical_deleted(canonical_id):
             raise KeyError(canonical_id)
         return self._ok(canonical.to_dict(include_sources=True))
+
+    def _list_deleted_transactions(self, query: dict[str, list[str]]) -> ApiResponse:
+        page, page_size = _pagination(query)
+        selected, total = self.store.list_deleted_canonical_page(
+            limit=page_size, offset=(page - 1) * page_size
+        )
+        return self._ok(
+            [
+                {**transaction.to_dict(include_sources=False), **metadata}
+                for transaction, metadata in selected
+            ],
+            {"page": page, "page_size": page_size, "total": total},
+        )
 
     def _transaction_route(  # noqa: PLR0911
         self, method: str, path: str, body: dict[str, Any]
@@ -461,6 +478,7 @@ def serve_mobile_api(
     host: str = "127.0.0.1",
     port: int = 8765,
     api_token: str | None = None,
+    open_browser: bool = False,
 ) -> None:
     """Serve the API locally; non-loopback callers should always use a token."""
 
@@ -544,6 +562,12 @@ def serve_mobile_api(
             return
 
     server = HTTPServer((host, port), Handler)
+    actual_port = server.server_address[1]
+    browser_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    local_url = f"http://{browser_host}:{actual_port}"
+    print(f"FinancialBeancount is running at {local_url}")
+    if open_browser:
+        threading.Timer(0.2, webbrowser.open, args=(local_url,)).start()
     try:
         server.serve_forever()
     finally:
@@ -558,12 +582,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--database", default="ledger.sqlite3")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--open-browser", action="store_true")
     args = parser.parse_args(argv)
     serve_mobile_api(
         args.database,
         host=args.host,
         port=args.port,
         api_token=os.environ.get("FINANCIAL_BEANCOUNT_API_TOKEN"),
+        open_browser=args.open_browser,
     )
 
 

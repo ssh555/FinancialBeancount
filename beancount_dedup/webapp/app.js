@@ -214,8 +214,15 @@ function detailMarkup(data, endpoint) {
   </form>` : "";
   const transactionForm = endpoint.startsWith("/api/v1/transactions/") ? `<form class="edit-form" data-transaction-edit data-endpoint="${escapeHtml(endpoint)}">
     <h3>修改唯一交易</h3>
+    <label>日期<input name="booking_date" type="date" required value="${escapeHtml(primary.booking_date || "")}"></label>
+    <label>金额<input name="amount" inputmode="decimal" required value="${escapeHtml(primary.amount || "")}"></label>
+    <label>收支<select name="direction"><option value="expense" ${primary.direction === "expense" ? "selected" : ""}>支出</option><option value="income" ${primary.direction === "income" ? "selected" : ""}>收入</option></select></label>
     <label>商户<input name="merchant" required value="${escapeHtml(primary.merchant || "")}"></label>
     <label>分类<input name="category" value="${escapeHtml(primary.category || "")}"></label>
+    <label>交易类型<select name="tx_type">${["unknown", "expense", "income", "refund", "transfer", "investment", "preauthorization"].map(value => `<option value="${value}" ${primary.tx_type === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
+    <label>支付渠道<input name="payment_channel" value="${escapeHtml(primary.payment_channel || "")}"></label>
+    <label>资金账户<input name="funding_account" value="${escapeHtml(primary.funding_account || "")}"></label>
+    <label>状态<input name="status" value="${escapeHtml(primary.status || "")}"></label>
     <label>备注<input name="notes" value="${escapeHtml(primary.notes || "")}"></label>
     <button class="button primary" type="submit">保存修改</button>
     <button class="button danger" data-soft-delete type="button">移入已删除记录</button>
@@ -265,13 +272,27 @@ function fileAsBase64(file) {
   });
 }
 
-async function exportTransactions() {
+async function exportTransactions(format) {
   try {
-    const payload = await request("/api/v1/exports/transactions?format=json");
-    const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), ...payload }, null, 2)], { type: "application/json" });
-    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `financial-beancount-${new Date().toISOString().slice(0, 10)}.json`; link.click();
+    const payload = await request(`/api/v1/exports/transactions?format=${format}`);
+    let content, mime;
+    if (format === "csv") {
+      const columns = ["canonical_id", "booking_date", "transaction_time", "amount", "direction", "merchant", "category", "payment_channel", "funding_account", "tx_type", "status", "review_status", "notes", "source_count"];
+      const quote = value => `"${text(value).replaceAll('"', '""')}"`;
+      content = "\ufeff" + [columns.join(","), ...payload.data.map(row => columns.map(column => quote(row[column])).join(","))].join("\r\n"); mime = "text/csv;charset=utf-8";
+    } else { content = JSON.stringify({ exported_at: new Date().toISOString(), ...payload }, null, 2); mime = "application/json"; }
+    const blob = new Blob([content], { type: mime });
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `financial-beancount-${new Date().toISOString().slice(0, 10)}.${format}`; link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000); toast(`已导出 ${payload.meta.total} 笔唯一交易`);
   } catch (error) { toast(error.message); }
+}
+
+async function showTrash() {
+  $("#dialog-title").textContent = "已删除交易"; $("#dialog-content").innerHTML = '<div class="skeleton"></div>'; if (!$("#detail-dialog").open) $("#detail-dialog").showModal();
+  try {
+    const payload = await request("/api/v1/deleted-transactions?page_size=200");
+    $("#dialog-content").innerHTML = payload.data.length ? `<div class="stack-list">${payload.data.map(item => `<article class="list-card"><span class="list-top"><span class="list-title">${escapeHtml(merchant(item))}</span><span class="amount">${money(item.amount)}</span></span><span class="list-meta"><span>${escapeHtml(item.booking_date)}</span><span>${escapeHtml(item.deletion_reason || "未填写原因")}</span></span><button class="button primary wide" data-restore="${escapeHtml(item.canonical_id)}" type="button">恢复交易</button></article>`).join("")}</div>` : empty("回收站为空");
+  } catch (error) { renderError($("#dialog-content"), error); }
 }
 
 function empty(message) { return `<div class="empty">${escapeHtml(message)}</div>`; }
@@ -289,7 +310,9 @@ document.addEventListener("click", event => {
 $("#transaction-filter").addEventListener("submit", event => { event.preventDefault(); loadTransactions(true); });
 $("#add-button").addEventListener("click", showCreateForm);
 $("#import-button").addEventListener("click", showImportForm);
-$("#export-button").addEventListener("click", exportTransactions);
+$("#export-json-button").addEventListener("click", () => exportTransactions("json"));
+$("#export-csv-button").addEventListener("click", () => exportTransactions("csv"));
+$("#trash-button").addEventListener("click", showTrash);
 $("#load-more").addEventListener("click", () => { state.transactionPage += 1; loadTransactions(false); });
 $("#apply-dates").addEventListener("click", loadOverview);
 $("#connection-button").addEventListener("click", () => showView("settings"));
@@ -339,6 +362,14 @@ $("#detail-dialog").addEventListener("submit", async event => {
   } catch (error) { toast(error.message); submit.disabled = false; }
 });
 $("#detail-dialog").addEventListener("click", async event => {
+  const restore = event.target.closest("[data-restore]");
+  if (restore) {
+    try {
+      await request(`/api/v1/transactions/${restore.dataset.restore}/restore`, { method: "POST", body: JSON.stringify({ actor: actor() }) });
+      toast("交易已恢复并记录审计事件"); await showTrash(); await loadTransactions(true);
+    } catch (error) { toast(error.message); }
+    return;
+  }
   const button = event.target.closest("[data-soft-delete]"); if (!button) return;
   const form = button.closest("[data-transaction-edit]");
   if (!confirm("移除这条唯一交易？所有原始来源与审计记录都会保留。")) return;

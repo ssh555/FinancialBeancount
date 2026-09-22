@@ -4,6 +4,7 @@ import base64
 from datetime import date, datetime
 
 import pytest
+from beancount_dedup import mobile_api as mobile_api_module
 from beancount_dedup.canonical_matcher import ConservativeMatcher
 from beancount_dedup.ledger_models import CanonicalTransaction, RawTransaction
 from beancount_dedup.ledger_store import LedgerStore
@@ -66,6 +67,22 @@ def test_bundled_web_client_assets_are_available_and_whitelisted():
     assert b"/api/v1/statistics/summary" in script.body
     assert manifest is not None
     assert load_web_asset("/../ledger.sqlite3") is None
+
+
+def test_cli_can_request_browser_launch(monkeypatch):
+    received = {}
+
+    def fake_serve(database_path, **options):
+        received.update({"database_path": database_path, **options})
+
+    monkeypatch.setattr(mobile_api_module, "serve_mobile_api", fake_serve)
+    mobile_api_module.main(
+        ["--database", "test.sqlite3", "--port", "9000", "--open-browser"]
+    )
+
+    assert received["database_path"] == "test.sqlite3"
+    assert received["port"] == 9000
+    assert received["open_browser"] is True
 
 
 def test_transaction_list_is_compact_but_detail_contains_all_sources(store):
@@ -160,6 +177,7 @@ def test_transaction_crud_uses_soft_delete_and_audit_events(store):
     )
     hidden = api.dispatch("GET", f"/api/v1/transactions/{canonical_id}")
     listing = api.dispatch("GET", "/api/v1/transactions")
+    deleted_listing = api.dispatch("GET", "/api/v1/deleted-transactions")
     restored = api.dispatch(
         "POST", f"/api/v1/transactions/{canonical_id}/restore", {"actor": "local-user"}
     )
@@ -170,6 +188,8 @@ def test_transaction_crud_uses_soft_delete_and_audit_events(store):
     assert deleted.body["data"]["deleted"] is True
     assert hidden.status == 404
     assert listing.body["meta"]["total"] == 0
+    assert deleted_listing.body["meta"]["total"] == 1
+    assert deleted_listing.body["data"][0]["deletion_reason"] == "录入错误"
     assert restored.body["data"]["canonical_id"] == canonical_id
     assert [item["action"] for item in events.body["data"]] == [
         "created",
