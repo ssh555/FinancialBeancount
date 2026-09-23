@@ -70,6 +70,10 @@ def test_bundled_web_client_assets_are_available_and_whitelisted():
     assert "本地账本".encode() in index.body
     assert script is not None
     assert b"/api/v1/statistics/summary" in script.body
+    assert b"data-import-files" in script.body
+    assert b"data-import-folder" in script.body
+    assert b"importQueuedStatements" in script.body
+    assert "未处理文件".encode() in script.body
     assert manifest is not None
     assert load_web_asset("/icon.svg").content_type == "image/svg+xml"
     assert load_web_asset("/../ledger.sqlite3") is None

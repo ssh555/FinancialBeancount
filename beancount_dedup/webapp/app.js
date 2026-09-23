@@ -6,6 +6,8 @@ const state = {
   transactionPage: 1,
   transactions: [],
   counts: { imports: 0, matches: 0, refunds: 0, classifications: 0 },
+  importFormats: [],
+  importQueue: [],
 };
 
 const $ = selector => document.querySelector(selector);
@@ -249,18 +251,96 @@ function showCreateForm() {
 }
 
 async function showImportForm() {
-  $("#dialog-title").textContent = "导入官方账单";
+  $("#dialog-title").textContent = "批量导入官方账单";
   $("#dialog-content").innerHTML = '<div class="skeleton"></div>';
   $("#detail-dialog").showModal();
   try {
     const { data } = await request("/api/v1/import-formats");
+    state.importFormats = data;
+    state.importQueue = [];
     $("#dialog-content").innerHTML = `<form class="edit-form" data-statement-import>
-      <label>账单格式<select name="format_id">${data.map(item => `<option value="${escapeHtml(item.format_id)}">${escapeHtml(item.display_name)}</option>`).join("")}</select></label>
-      <label>来源账户<input name="source_account" required placeholder="例如：支付宝-本人"></label>
-      <label>账单文件<input name="statement" type="file" required accept=".csv,.xlsx,.pdf"></label>
-      <p class="muted">文件仅发送到本机账本服务处理；原始观察会永久保留并进入审核流程。</p>
-      <button class="button primary" type="submit">开始导入</button></form>`;
+      <label>默认来源账户<input name="default_source_account" placeholder="例如：支付宝-本人；加入队列后仍可逐项修改"></label>
+      <div class="import-pickers">
+        <label class="button secondary file-picker">选择一个或多个文件<input data-import-files type="file" multiple accept=".csv,.xlsx,.pdf"></label>
+        <label class="button secondary file-picker">选择文件夹<input data-import-folder type="file" multiple webkitdirectory directory accept=".csv,.xlsx,.pdf"></label>
+      </div>
+      <p class="muted">支持 CSV、XLSX、PDF。文件夹中的其他类型会被自动过滤；同一文件不会重复加入当前队列。</p>
+      <div data-import-queue>${empty("请选择账单文件或文件夹")}</div>
+      <div data-import-progress class="muted"></div>
+      <button class="button primary wide" type="submit" disabled>导入队列中的 0 个文件</button>
+      <p class="muted">文件仅发送到本机账本服务处理；各文件独立导入，原始观察永久保留，并分别进入审核流程。</p>
+    </form>`;
   } catch (error) { renderError($("#dialog-content"), error); }
+}
+
+function compatibleImportFormats(file) {
+  const suffix = `.${file.name.split(".").pop().toLowerCase()}`;
+  return state.importFormats.filter(format => format.extensions.includes(suffix));
+}
+
+function addFilesToImportQueue(files) {
+  const account = text($("[data-statement-import] [name='default_source_account']")?.value).trim();
+  const existing = new Set(state.importQueue.map(item => item.key));
+  let skipped = 0;
+  for (const file of files) {
+    const formats = compatibleImportFormats(file);
+    if (!formats.length || file.size > 50 * 1024 * 1024) { skipped += 1; continue; }
+    const key = `${file.webkitRelativePath || file.name}:${file.size}:${file.lastModified}`;
+    if (existing.has(key)) { skipped += 1; continue; }
+    existing.add(key);
+    state.importQueue.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${state.importQueue.length}`,
+      key, file, formatId: formats.length === 1 ? formats[0].format_id : "",
+      sourceAccount: account, status: "queued", result: null,
+    });
+  }
+  renderImportQueue();
+  if (skipped) toast(`已过滤 ${skipped} 个不支持、过大或重复的文件`);
+}
+
+function renderImportQueue() {
+  const container = $("[data-import-queue]");
+  if (!container) return;
+  container.innerHTML = state.importQueue.length ? `<div class="import-queue">${state.importQueue.map(item => {
+    const formats = compatibleImportFormats(item.file);
+    const path = item.file.webkitRelativePath || item.file.name;
+    const status = item.status === "success" ? "导入成功" : item.status === "unprocessed" ? `未处理：${escapeHtml(item.result)}` : item.status === "running" ? "正在导入…" : "等待导入";
+    return `<article class="import-item ${item.status}" data-import-id="${escapeHtml(item.id)}">
+      <div class="list-top"><strong class="list-title" title="${escapeHtml(path)}">${escapeHtml(path)}</strong><button class="icon-button import-remove" data-import-remove="${escapeHtml(item.id)}" type="button" aria-label="移除">×</button></div>
+      <span class="list-meta">${(item.file.size / 1024 / 1024).toFixed(2)} MiB · ${status}</span>
+      <label>账单格式<select data-import-format ${item.status !== "queued" ? "disabled" : ""} required><option value="">请选择来源格式</option>${formats.map(format => `<option value="${escapeHtml(format.format_id)}" ${format.format_id === item.formatId ? "selected" : ""}>${escapeHtml(format.display_name)}</option>`).join("")}</select></label>
+      <label>来源账户<input data-import-account value="${escapeHtml(item.sourceAccount)}" ${item.status !== "queued" ? "disabled" : ""} required placeholder="例如：招商银行-尾号1234"></label>
+    </article>`;
+  }).join("")}</div>` : empty("请选择账单文件或文件夹");
+  const button = $("[data-statement-import] button[type='submit']");
+  const queued = state.importQueue.filter(item => item.status === "queued").length;
+  if (button) { button.disabled = queued === 0; button.textContent = `导入队列中的 ${queued} 个文件`; }
+}
+
+async function importQueuedStatements(form) {
+  const queued = state.importQueue.filter(item => item.status === "queued");
+  for (const item of queued) {
+    const row = form.querySelector(`[data-import-id="${item.id}"]`);
+    item.formatId = row.querySelector("[data-import-format]").value;
+    item.sourceAccount = row.querySelector("[data-import-account]").value.trim();
+    if (!item.formatId || !item.sourceAccount) throw new Error(`请补全 ${item.file.name} 的格式和来源账户`);
+  }
+  let succeeded = 0; let unprocessed = 0; let pending = 0; const unprocessedNames = [];
+  const progress = form.querySelector("[data-import-progress]");
+  for (let index = 0; index < queued.length; index += 1) {
+    const item = queued[index]; item.status = "running"; renderImportQueue();
+    progress.textContent = `正在处理 ${index + 1}/${queued.length}：${item.file.name}`;
+    try {
+      const response = await request("/api/v1/imports", { method: "POST", body: JSON.stringify({ format_id: item.formatId, source_account: item.sourceAccount, filename: item.file.name, content_base64: await fileAsBase64(item.file) }) });
+      item.status = "success"; item.result = response.data; succeeded += 1; pending += response.data.pending_review_count;
+    } catch (error) { item.status = "unprocessed"; item.result = error.message || "文件内容无法识别"; unprocessed += 1; unprocessedNames.push(item.file.name); }
+    renderImportQueue();
+  }
+  const skippedDetail = unprocessedNames.length ? ` 未处理文件：${unprocessedNames.join("、")}` : "";
+  progress.textContent = `批量导入完成：成功 ${succeeded} 个，未处理 ${unprocessed} 个，新增待审核 ${pending} 条。${skippedDetail}`;
+  toast(`批量导入完成：成功 ${succeeded}，未处理 ${unprocessed}`);
+  state.reviewType = "imports";
+  await loadTransactions(true); await refreshCounts();
 }
 
 function fileAsBase64(file) {
@@ -330,7 +410,13 @@ document.addEventListener("click", event => {
   const decision = event.target.closest("[data-decision]"); if (decision) decide(decision);
   const detail = event.target.closest("[data-detail='transaction']"); if (detail) showDetail(`/api/v1/transactions/${detail.dataset.id}`, "交易详情");
   const endpoint = event.target.closest("[data-endpoint]:not([data-decision])"); if (endpoint) showDetail(endpoint.dataset.endpoint, endpoint.dataset.title);
+  const removeImport = event.target.closest("[data-import-remove]"); if (removeImport) { state.importQueue = state.importQueue.filter(item => item.id !== removeImport.dataset.importRemove); renderImportQueue(); }
   if (event.target.closest("[data-action='refresh']")) showView(state.view);
+});
+
+$("#detail-dialog").addEventListener("change", event => {
+  const picker = event.target.closest("[data-import-files], [data-import-folder]");
+  if (picker) { addFilesToImportQueue([...picker.files]); picker.value = ""; }
 });
 
 $("#transaction-filter").addEventListener("submit", event => { event.preventDefault(); loadTransactions(true); });
@@ -374,10 +460,8 @@ $("#detail-dialog").addEventListener("submit", async event => {
   const submit = form.querySelector("button[type='submit']"); submit.disabled = true;
   try {
     if (form.matches("[data-statement-import]")) {
-      const values = new FormData(form); const file = values.get("statement");
-      const result = await request("/api/v1/imports", { method: "POST", body: JSON.stringify({ format_id: values.get("format_id"), source_account: values.get("source_account"), filename: file.name, content_base64: await fileAsBase64(file) }) });
-      toast(`已解析 ${result.data.parsed_count} 条，${result.data.pending_review_count} 条待审核`);
-      state.reviewType = "imports";
+      await importQueuedStatements(form);
+      return;
     } else if (form.matches("[data-transaction-create]")) {
       const values = Object.fromEntries(new FormData(form));
       values.actor = actor(); values.tx_type = values.direction === "expense" ? "expense" : "income";
