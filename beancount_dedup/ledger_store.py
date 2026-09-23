@@ -7,7 +7,7 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -23,7 +23,16 @@ from .ledger_models import (
 )
 from .models import Platform, TransactionType
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
+MINIMUM_UPGRADABLE_SCHEMA_VERSION = 8
+
+
+class LedgerMigrationError(RuntimeError):
+    """Raised when a ledger cannot be safely opened or upgraded."""
+
+    def __init__(self, message: str, backup_path: Path | None = None):
+        super().__init__(message)
+        self.backup_path = backup_path
 
 
 @dataclass(frozen=True)
@@ -84,7 +93,12 @@ class LedgerStore:
         self.connection = sqlite3.connect(self.path)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
-        self._initialize_schema()
+        self.last_migration_backup: Path | None = None
+        try:
+            self._initialize_schema()
+        except Exception:
+            self.connection.close()
+            raise
 
     def close(self) -> None:
         self.connection.close()
@@ -107,6 +121,173 @@ class LedgerStore:
             raise
 
     def _initialize_schema(self) -> None:
+        existing_version = self._existing_schema_version()
+        if existing_version is None:
+            if self._has_application_tables():
+                raise LedgerMigrationError("existing database has no recognized schema version")
+            self._create_current_schema()
+            return
+        if existing_version > SCHEMA_VERSION:
+            raise LedgerMigrationError(
+                f"ledger schema {existing_version} is newer than supported schema {SCHEMA_VERSION}"
+            )
+        if existing_version < MINIMUM_UPGRADABLE_SCHEMA_VERSION:
+            raise LedgerMigrationError(
+                f"ledger schema {existing_version} is too old for an automatic upgrade"
+            )
+        if existing_version < SCHEMA_VERSION:
+            try:
+                self.last_migration_backup = self._create_migration_backup(existing_version)
+            except Exception as exc:
+                raise LedgerMigrationError(
+                    "could not create and verify a pre-migration backup; migration was not started"
+                ) from exc
+            try:
+                self._apply_migrations(existing_version, self.last_migration_backup)
+            except Exception as exc:
+                self.connection.rollback()
+                raise LedgerMigrationError(
+                    f"ledger migration from schema {existing_version} failed; "
+                    f"backup retained at {self.last_migration_backup}",
+                    self.last_migration_backup,
+                ) from exc
+
+    def _existing_schema_version(self) -> int | None:
+        table = self.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta'"
+        ).fetchone()
+        if table is None:
+            return None
+        row = self.connection.execute(
+            "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        if row is None:
+            raise LedgerMigrationError("schema_meta does not contain schema_version")
+        try:
+            return int(row[0])
+        except (TypeError, ValueError) as exc:
+            raise LedgerMigrationError("schema_version is invalid") from exc
+
+    def _has_application_tables(self) -> bool:
+        row = self.connection.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+            LIMIT 1
+            """
+        ).fetchone()
+        return row is not None
+
+    def _create_migration_backup(self, existing_version: int) -> Path:
+        from .backup import export_backup, inspect_backup
+
+        database_path = Path(self.path)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        destination = database_path.parent / "backups" / (
+            f"{database_path.stem}.pre-migration-v{existing_version}-to-v{SCHEMA_VERSION}-"
+            f"{timestamp}.financial-beancount.zip"
+        )
+        manifest = export_backup(self, destination)
+        inspected = inspect_backup(destination)
+        if manifest != inspected or inspected.schema_version != existing_version:
+            raise LedgerMigrationError("pre-migration backup verification failed")
+        return destination
+
+    def _apply_migrations(self, existing_version: int, backup_path: Path) -> None:
+        started_at = datetime.now(timezone.utc).isoformat()
+        applied: list[tuple[int, int]] = []
+        self.connection.execute("BEGIN IMMEDIATE")
+        try:
+            version = existing_version
+            if version == 8:
+                self._migrate_8_to_9()
+                applied.append((8, 9))
+                version = 9
+            if version == 9:
+                self._migrate_9_to_10()
+                applied.append((9, 10))
+                version = 10
+            if version != SCHEMA_VERSION:
+                raise LedgerMigrationError(f"no migration path from schema {version}")
+            completed_at = datetime.now(timezone.utc).isoformat()
+            for from_version, to_version in applied:
+                self.connection.execute(
+                    """
+                    INSERT INTO schema_migrations(
+                        migration_id, from_version, to_version, started_at,
+                        completed_at, backup_path, status
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'completed')
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        from_version,
+                        to_version,
+                        started_at,
+                        completed_at,
+                        str(backup_path),
+                    ),
+                )
+            self.connection.execute(
+                "INSERT OR REPLACE INTO schema_meta(key, value) VALUES('schema_version', ?)",
+                (str(SCHEMA_VERSION),),
+            )
+            integrity = self.connection.execute("PRAGMA quick_check").fetchone()
+            if not integrity or integrity[0] != "ok":
+                raise LedgerMigrationError("ledger integrity check failed after migration")
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+
+    def _migrate_8_to_9(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE canonical_deletions (
+                canonical_id TEXT PRIMARY KEY,
+                actor TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                deleted_at TEXT NOT NULL,
+                FOREIGN KEY (canonical_id)
+                    REFERENCES canonical_transactions(canonical_id) ON DELETE CASCADE
+            )
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE canonical_events (
+                event_id TEXT PRIMARY KEY,
+                canonical_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                before_json TEXT NOT NULL,
+                after_json TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (canonical_id)
+                    REFERENCES canonical_transactions(canonical_id) ON DELETE CASCADE
+            )
+            """
+        )
+        self.connection.execute(
+            """CREATE INDEX idx_canonical_events_transaction
+               ON canonical_events(canonical_id, created_at)"""
+        )
+
+    def _migrate_9_to_10(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE schema_migrations (
+                migration_id TEXT PRIMARY KEY,
+                from_version INTEGER NOT NULL,
+                to_version INTEGER NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT NOT NULL,
+                backup_path TEXT NOT NULL,
+                status TEXT NOT NULL
+            )
+            """
+        )
+
+    def _create_current_schema(self) -> None:
         with self.transaction() as connection:
             connection.executescript(
                 """
@@ -371,6 +552,16 @@ class LedgerStore:
 
                 CREATE INDEX IF NOT EXISTS idx_canonical_events_transaction
                     ON canonical_events(canonical_id, created_at);
+
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    migration_id TEXT PRIMARY KEY,
+                    from_version INTEGER NOT NULL,
+                    to_version INTEGER NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    backup_path TEXT NOT NULL,
+                    status TEXT NOT NULL
+                );
                 """
             )
             connection.execute(
@@ -964,7 +1155,7 @@ class LedgerStore:
 
     def list_canonical_events(self, canonical_id: str) -> list[dict[str, object]]:
         rows = self.connection.execute(
-            "SELECT * FROM canonical_events WHERE canonical_id = ? ORDER BY created_at, event_id",
+            "SELECT * FROM canonical_events WHERE canonical_id = ? ORDER BY created_at, rowid",
             (canonical_id,),
         ).fetchall()
         return [

@@ -37,6 +37,7 @@ _EXPORTS = {
     "ImportSummary": ("statement_importer", "ImportSummary"),
     "IncomeCategory": ("account_classifier", "IncomeCategory"),
     "LedgerStore": ("ledger_store", "LedgerStore"),
+    "LedgerMigrationError": ("ledger_store", "LedgerMigrationError"),
     "MatchCandidate": ("canonical_matcher", "MatchCandidate"),
     "MatchEvidence": ("canonical_matcher", "MatchEvidence"),
     "MobileLedgerApi": ("mobile_api", "MobileLedgerApi"),

@@ -84,6 +84,22 @@ unsigned Windows, macOS, and Linux ZIP artifacts plus SHA-256 manifests for vali
 also smoke-tests the packaged update helper. Platform signatures and signed installers remain
 release gates, so downloadable releases are intentionally not published yet.
 
+### Recoverable Database Upgrades
+
+Existing Schema 8 or 9 ledgers are upgraded transactionally to the current schema. Before any
+migration begins, the application writes and reopens a checksummed backup under the ledger's
+`backups` directory. A failed migration rolls back all schema changes, keeps the backup and original
+database, records a startup diagnostic, and offers an explicit restore action in the desktop
+controller. The same recovery path is available while the application is closed:
+
+```bash
+financial-beancount-backup inspect --backup path/to/backup.financial-beancount.zip
+financial-beancount-backup restore --backup path/to/backup.financial-beancount.zip --database ledger.sqlite3 --overwrite
+```
+
+Databases newer than the running application, databases older than the supported migration floor,
+and unversioned non-empty databases are refused without modification.
+
 ## Project Structure
 
 ```

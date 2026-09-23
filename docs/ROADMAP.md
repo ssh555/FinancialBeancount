@@ -52,6 +52,9 @@ review, and end-to-end tests are complete.
   binaries, swaps the prepared application in place, and starts it. The replacement must report
   local-server readiness through a one-time health marker; otherwise the helper restores the old
   version. CI exercises the packaged helper against disposable directories.
+- Schema upgrades from every historical ledger schema (8 and 9) create and validate a checksummed
+  backup before writes, run inside one transaction, preserve a migration audit record, and retain
+  the original schema on failure. Desktop and CLI recovery paths require explicit confirmation.
 
 Platform signature verification, permission/elevation UX, signed installers, and upgrade testing
 from every published version remain future release batches.

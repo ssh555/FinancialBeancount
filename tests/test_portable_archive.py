@@ -137,6 +137,31 @@ def test_import_refuses_nonempty_destination(tmp_path):
         import_portable_archive(archive, tmp_path / "destination.sqlite3")
 
 
+def test_import_accepts_legacy_v1_schema_9_archive(tmp_path):
+    store, result, _ = populated_store(tmp_path / "source.sqlite3")
+    current = tmp_path / "current.zip"
+    export_portable_archive(store, current)
+    store.close()
+    legacy = tmp_path / "legacy-v1.zip"
+    with zipfile.ZipFile(current, "r") as source:
+        entries = {name: source.read(name) for name in source.namelist()}
+    manifest = json.loads(entries["manifest.json"])
+    manifest["format_version"] = 1
+    manifest["schema_version"] = 9
+    manifest["tables"].pop("schema_migrations")
+    entries.pop("data/schema_migrations.jsonl")
+    entries["manifest.json"] = json.dumps(manifest).encode("utf-8")
+    with zipfile.ZipFile(legacy, "w") as target:
+        for name, payload in entries.items():
+            target.writestr(name, payload)
+
+    restored = import_portable_archive(legacy, tmp_path / "restored.sqlite3")
+    try:
+        assert restored.get_raw(result.raw_transaction.raw_id) is not None
+    finally:
+        restored.close()
+
+
 def test_import_rejects_forged_column_even_with_matching_checksum(tmp_path):
     store, _, _ = populated_store(tmp_path / "source.sqlite3")
     archive = tmp_path / "valid.zip"

@@ -12,7 +12,7 @@ import pytest
 from beancount_dedup import mobile_api as mobile_api_module
 from beancount_dedup.canonical_matcher import ConservativeMatcher
 from beancount_dedup.ledger_models import CanonicalTransaction, RawTransaction
-from beancount_dedup.ledger_store import LedgerStore
+from beancount_dedup.ledger_store import SCHEMA_VERSION, LedgerStore
 from beancount_dedup.mobile_api import MobileLedgerApi, load_web_asset, serve_mobile_api
 from beancount_dedup.models import Platform, TransactionType
 from beancount_dedup.review import ImportReviewService
@@ -293,7 +293,7 @@ def test_portable_archive_export_api_contains_complete_manifest(store):
 
     assert created.status == 200
     assert exported.status == 200
-    assert exported.body["data"]["manifest"]["schema_version"] == 9
+    assert exported.body["data"]["manifest"]["schema_version"] == SCHEMA_VERSION
     with zipfile.ZipFile(io.BytesIO(archive)) as packaged:
         assert "manifest.json" in packaged.namelist()
         assert "data/canonical_events.jsonl" in packaged.namelist()

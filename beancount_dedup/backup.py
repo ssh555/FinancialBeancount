@@ -66,7 +66,7 @@ def export_backup(store: LedgerStore, output_path: str | Path) -> BackupManifest
         manifest = BackupManifest(
             format=BACKUP_FORMAT,
             format_version=BACKUP_FORMAT_VERSION,
-            schema_version=SCHEMA_VERSION,
+            schema_version=_connection_schema_version(store.connection),
             created_at=datetime.now(timezone.utc).isoformat(),
             database_sha256=_sha256(database_copy),
         )
@@ -77,6 +77,18 @@ def export_backup(store: LedgerStore, output_path: str | Path) -> BackupManifest
                 json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2, sort_keys=True),
             )
     return manifest
+
+
+def _connection_schema_version(connection: sqlite3.Connection) -> int:
+    try:
+        row = connection.execute(
+            "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        if row is None:
+            raise BackupError("ledger does not declare a schema version")
+        return int(row[0])
+    except (sqlite3.DatabaseError, TypeError, ValueError) as exc:
+        raise BackupError("ledger schema version cannot be read") from exc
 
 
 def inspect_backup(backup_path: str | Path) -> BackupManifest:

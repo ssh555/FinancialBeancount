@@ -14,8 +14,8 @@ from typing import Any
 
 from .ledger_store import SCHEMA_VERSION, LedgerStore
 
-PORTABLE_FORMAT_VERSION = 1
-TABLE_ORDER = (
+PORTABLE_FORMAT_VERSION = 2
+LEGACY_TABLE_ORDER = (
     "import_batches",
     "raw_transactions",
     "import_occurrences",
@@ -33,6 +33,7 @@ TABLE_ORDER = (
     "canonical_deletions",
     "canonical_events",
 )
+TABLE_ORDER = (*LEGACY_TABLE_ORDER, "schema_migrations")
 
 
 class PortableArchiveError(ValueError):
@@ -132,7 +133,7 @@ def import_portable_archive(source: str | Path, destination: str | Path) -> Ledg
     store = LedgerStore(staged_name)
     try:
         with zipfile.ZipFile(source, "r") as archive, store.transaction() as connection:
-            for table in TABLE_ORDER:
+            for table in _table_order_for_manifest(manifest):
                 metadata = manifest.tables[table]
                 expected_columns = {
                     row["name"]
@@ -172,11 +173,14 @@ def _manifest_from_dict(value: dict[str, Any]) -> PortableArchiveManifest:
 
 
 def _validate_manifest(manifest: PortableArchiveManifest) -> None:
-    if manifest.format_version != PORTABLE_FORMAT_VERSION:
+    if manifest.format_version not in {1, PORTABLE_FORMAT_VERSION}:
         raise PortableArchiveError("unsupported portable format version")
     if manifest.schema_version > SCHEMA_VERSION:
         raise PortableArchiveError("archive schema is newer than this application")
-    if set(manifest.tables) != set(TABLE_ORDER):
+    if manifest.format_version == 1 and manifest.schema_version > 9:
+        raise PortableArchiveError("portable format v1 cannot represent this schema")
+    expected_tables = set(_table_order_for_manifest(manifest))
+    if set(manifest.tables) != expected_tables:
         raise PortableArchiveError("archive table set is incomplete or unexpected")
     for table, metadata in manifest.tables.items():
         if metadata.get("file") != f"data/{table}.jsonl":
@@ -186,3 +190,9 @@ def _validate_manifest(manifest: PortableArchiveManifest) -> None:
         checksum = metadata.get("sha256")
         if not isinstance(checksum, str) or len(checksum) != 64:
             raise PortableArchiveError(f"invalid checksum for table: {table}")
+
+
+def _table_order_for_manifest(manifest: PortableArchiveManifest) -> tuple[str, ...]:
+    if manifest.format_version == 1:
+        return LEGACY_TABLE_ORDER
+    return TABLE_ORDER

@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from . import __version__
+from .backup import BackupError, restore_backup
+from .ledger_store import LedgerMigrationError
 from .mobile_api import serve_mobile_api
 from .updater import (
     PreparedUpdate,
@@ -108,6 +110,10 @@ class DesktopController:
                 ready_callback=self._ready,
                 stop_event=self.stop_event,
             )
+        except LedgerMigrationError as exc:
+            error_log = self.database_path.parent / "last-startup-error.log"
+            error_log.write_text(str(exc), encoding="utf-8")
+            self.events.put(("migration_failed", exc))
         except Exception as exc:  # pragma: no cover - native startup boundary
             error_log = self.database_path.parent / "last-startup-error.log"
             error_log.write_text(str(exc), encoding="utf-8")
@@ -132,6 +138,8 @@ class DesktopController:
                 self._show_ready()
             elif action == "failed":
                 self._failed(value)
+            elif action == "migration_failed":
+                self._migration_failed(value)
             elif action == "update_checked":
                 self._show_update(value)
             elif action == "update_failed":
@@ -150,6 +158,26 @@ class DesktopController:
     def _failed(self, message: str) -> None:
         self.status.set("本地服务启动失败")
         self._messagebox.showerror("FinancialBeancount", message)
+
+    def _migration_failed(self, error: LedgerMigrationError) -> None:
+        self.status.set("账本数据库升级失败，原数据未被修改")
+        if error.backup_path is None:
+            self._messagebox.showerror("账本升级失败", str(error))
+            return
+        restore = self._messagebox.askyesno(
+            "账本升级失败",
+            f"{error}\n\n是否从迁移前备份恢复原数据库？\n"
+            f"备份：{error.backup_path}\n\n恢复后请退出，并使用兼容版本重新打开。",
+        )
+        if not restore:
+            return
+        try:
+            restore_backup(error.backup_path, self.database_path, overwrite=True)
+        except (BackupError, OSError) as exc:
+            self._messagebox.showerror("恢复失败", str(exc))
+            return
+        self.status.set("迁移前数据库已恢复，请退出应用")
+        self._messagebox.showinfo("恢复完成", "原数据库已从校验备份恢复，请退出应用。")
 
     def open_ledger(self) -> None:
         if self.local_url:

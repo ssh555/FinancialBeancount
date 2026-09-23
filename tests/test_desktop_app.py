@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from beancount_dedup.desktop_app import DesktopController, application_data_directory
+from beancount_dedup.ledger_store import LedgerMigrationError
 from beancount_dedup.updater import PreparedUpdate, ReleaseAsset, UpdateInfo
 
 
@@ -104,3 +105,20 @@ def test_launch_update_helper_copies_helper_outside_installation(tmp_path):
     assert command[0] == str(staged_helper)
     assert command[command.index("--install-dir") + 1] == str(installation)
     controller.close.assert_called_once_with()
+
+
+def test_migration_failure_restore_requires_confirmation(tmp_path):
+    controller = object.__new__(DesktopController)
+    controller.status = Mock()
+    controller._messagebox = Mock()
+    controller._messagebox.askyesno.return_value = True
+    controller.database_path = tmp_path / "ledger.sqlite3"
+    backup = tmp_path / "backup.financial-beancount.zip"
+    error = LedgerMigrationError("migration failed", backup)
+
+    with patch("beancount_dedup.desktop_app.restore_backup") as restore:
+        controller._migration_failed(error)
+
+    controller._messagebox.askyesno.assert_called_once()
+    restore.assert_called_once_with(backup, controller.database_path, overwrite=True)
+    controller._messagebox.showinfo.assert_called_once()

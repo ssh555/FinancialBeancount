@@ -60,6 +60,7 @@ all = [
 beancount-dedup = "beancount_dedup.cli:main"
 financial-beancount-api = "beancount_dedup.mobile_api:main"
 financial-beancount-archive = "beancount_dedup.archive_cli:main"
+financial-beancount-backup = "beancount_dedup.backup_cli:main"
 financial-beancount = "beancount_dedup.desktop_app:main"
 
 [tool.hatch.build.targets.wheel]
