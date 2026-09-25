@@ -60,6 +60,10 @@ review, and end-to-end tests are complete.
   installs can use an explicit UAC prompt; refusal or launch failure keeps the current process and
   ledger untouched, while other platforms receive a verified manual-replacement path. A late helper
   failure restores/restarts the retained application and writes a local diagnostic.
+- A required Windows/macOS/Linux CI matrix performs an application-directory swap followed by a real
+  open of schema 8, schema 9 and current-schema ledgers. It verifies canonical data preservation,
+  pre-migration backups, and coupled database/binary rollback on an injected migration failure.
+  Published versions must be added to this fixture matrix before their Release is considered supported.
 - Schema upgrades from every historical ledger schema (8 and 9) create and validate a checksummed
   backup before writes, run inside one transaction, preserve a migration audit record, and retain
   the original schema on failure. Desktop and CLI recovery paths require explicit confirmation.
@@ -68,5 +72,5 @@ review, and end-to-end tests are complete.
   narrow persistence contract, so a new provider or statement version does not require a database
   or ledger-core change. Built-in parsing flows are registered outside the core importer.
 
-Operating-system code-signing verification, signed installers, and upgrade testing
+Operating-system code-signing verification and signed installers
 from every published version remain future release batches.

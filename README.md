@@ -100,6 +100,12 @@ manual replacement instructions. The ledger database remains in its per-user dat
 never part of the binary swap. If a late helper failure occurs after exit, the retained application is
 started again and the diagnostic remains in `install-error.log`.
 
+CI also runs a release-upgrade gate on Windows, macOS and Linux. The matrix performs the real binary
+directory swap and then opens representative ledgers from every supported schema generation (8, 9
+and current 10), checking migration backups and preserved canonical data. An injected migration
+failure must leave the old database schema intact and roll the application binary back. Each future
+published version must remain represented in this matrix until its upgrade support window ends.
+
 ### Recoverable Database Upgrades
 
 Existing Schema 8 or 9 ledgers are upgraded transactionally to the current schema. Before any
