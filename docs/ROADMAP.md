@@ -79,6 +79,11 @@ review, and end-to-end tests are complete.
   validation and Gatekeeper assessment, and Linux verifies a detached signature against a dedicated
   keyring. Every verifier pins the configured publisher/fingerprint and binds evidence to the exact
   installer digest; the publication gate rejects legacy self-reported evidence.
+- Windows development builds produce a per-user MSI with a stable major-upgrade identity. A clean
+  Windows runner installs an older package, upgrades it in place, uninstalls the current package and
+  proves that the separately stored per-user ledger sentinel survives both operations. The MSI stays
+  a preview until its application binaries, updater and installer receive trusted Authenticode
+  signatures and verification evidence.
 
-Signing credential provisioning, native installer construction and in-place installer upgrades from
-every published version remain future release batches.
+Signing credential provisioning, macOS/Linux native installer construction and installer upgrades
+from every published version remain future release batches.

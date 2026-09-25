@@ -47,6 +47,22 @@ jobs:
           print(matches[0])
       - name: Verify packaged update helper
         run: python scripts/smoke_update_helper.py
+      - name: Build Windows MSI preview
+        if: ${{ matrix.platform == 'windows' && !inputs.signed_release }}
+        shell: pwsh
+        run: |
+          $version = python -c "import beancount_dedup; print(beancount_dedup.__version__)"
+          ./installer/windows/build.ps1 `
+            -Source dist/FinancialBeancount `
+            -Output artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.msi `
+            -Version $version
+      - name: Verify Windows MSI in-place upgrade and data preservation
+        if: ${{ matrix.platform == 'windows' && !inputs.signed_release }}
+        shell: pwsh
+        run: >-
+          ./installer/windows/smoke_upgrade.ps1
+          -Source dist/FinancialBeancount
+          -CurrentMsi artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.msi
       - name: Package development asset and checksum
         if: ${{ !inputs.signed_release }}
         run: >-

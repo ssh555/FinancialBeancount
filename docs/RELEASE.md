@@ -99,3 +99,18 @@ The following existing GitHub configuration is only for the cross-platform Ed255
 
 Platform certificate secret names will be added together with their installer implementation, so no
 unused long-lived certificate material needs to be provisioned early.
+
+## Windows MSI preview
+
+Unsigned development builds now produce a per-user MSI under
+`%LOCALAPPDATA%\Programs\FinancialBeancount`. The package has a stable upgrade code and changing
+product code, so a newer three-part version performs a Windows Installer major upgrade without an
+uninstall/reinstall step. Application data remains separately under
+`%LOCALAPPDATA%\FinancialBeancount`; neither upgrades nor uninstall author that directory for
+removal.
+
+The Windows CI job installs a generated `0.0.1` package, creates a user-data sentinel, upgrades in
+place to the current package, and uninstalls it. It fails unless application files follow the
+expected lifecycle while the sentinel survives both upgrade and uninstall. These MSI files remain
+preview artifacts: official Release mode still requires Authenticode signing and the native
+verification evidence described above.
