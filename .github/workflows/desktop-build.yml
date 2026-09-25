@@ -73,6 +73,37 @@ jobs:
           ./installer/windows/smoke_upgrade.ps1
           -Source dist/FinancialBeancount
           -CurrentMsi artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.msi
+      - name: Build macOS DMG preview
+        if: ${{ matrix.platform == 'macos' && !inputs.signed_release }}
+        run: >-
+          bash installer/macos/build_dmg.sh
+          dist/FinancialBeancount.app
+          artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.dmg
+      - name: Verify macOS DMG replacement and data preservation
+        if: ${{ matrix.platform == 'macos' && !inputs.signed_release }}
+        run: >-
+          bash installer/macos/smoke_dmg.sh
+          artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.dmg
+      - name: Sign and notarize macOS DMG
+        if: ${{ matrix.platform == 'macos' && inputs.signed_release }}
+        env:
+          FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE: ${{ secrets.FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE }}
+          FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE_PASSWORD }}
+          FINANCIAL_BEANCOUNT_MACOS_SIGNING_IDENTITY: ${{ vars.FINANCIAL_BEANCOUNT_MACOS_SIGNING_IDENTITY }}
+          FINANCIAL_BEANCOUNT_APPLE_ID: ${{ secrets.FINANCIAL_BEANCOUNT_APPLE_ID }}
+          FINANCIAL_BEANCOUNT_APPLE_APP_PASSWORD: ${{ secrets.FINANCIAL_BEANCOUNT_APPLE_APP_PASSWORD }}
+          FINANCIAL_BEANCOUNT_APPLE_TEAM_ID: ${{ vars.FINANCIAL_BEANCOUNT_APPLE_TEAM_ID }}
+        run: >-
+          bash installer/macos/sign_and_notarize.sh
+          dist/FinancialBeancount.app
+          artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.dmg
+      - name: Record macOS native signature evidence
+        if: ${{ matrix.platform == 'macos' && inputs.signed_release }}
+        run: >-
+          python scripts/verify_platform_signature.py
+          --platform macos
+          --installer artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.dmg
+          --expected-identity "${{ vars.FINANCIAL_BEANCOUNT_MACOS_SIGNING_IDENTITY }}"
       - name: Sign Windows MSI
         if: ${{ matrix.platform == 'windows' && inputs.signed_release }}
         shell: pwsh
@@ -117,6 +148,15 @@ jobs:
           --architecture ${{ runner.arch }}
       - name: Verify signed Windows release gate
         if: ${{ matrix.platform == 'windows' && inputs.signed_release }}
+        run: >-
+          python scripts/release_gate.py
+          --repository .
+          --artifacts artifacts
+          --mode release
+          --platform ${{ matrix.platform }}
+          --architecture ${{ runner.arch }}
+      - name: Verify signed macOS release gate
+        if: ${{ matrix.platform == 'macos' && inputs.signed_release }}
         run: >-
           python scripts/release_gate.py
           --repository .

@@ -3,6 +3,35 @@
 The repository does not currently publish GitHub Releases. The desktop workflow produces reviewable
 artifacts only; a successful workflow run is not permission to publish them.
 
+## Ownership and documentation policy
+
+Release identities belong to the actual publisher of a release. End users do not configure signing
+certificates, timestamp services, Apple accounts or update-manifest keys. A downstream fork that
+publishes binaries must use its own identities and must embed the public key corresponding to its own
+update-manifest signing key. Private keys, certificate files and passwords must be stored only in
+protected deployment secret stores; they must never be committed, printed in logs or bundled into the
+application.
+
+Every change to package formats, secret or variable names, signing/notarization commands, updater
+asset names, supported upgrade versions or release gates must update this document and the relevant
+README section in the same commit. Preview builds remain available without publisher credentials.
+Requesting signed mode is fail-closed and never substitutes a test certificate or unsigned artifact.
+
+### Publisher configuration matrix
+
+| Scope | GitHub configuration | Owner | Status |
+| --- | --- | --- | --- |
+| Update manifest | Variable `FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY`; secret `FINANCIAL_BEANCOUNT_RELEASE_SIGNING_KEY` | Release publisher | Implemented; keys must be a matching Ed25519 pair |
+| Windows | Secrets `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE`, `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD`; variables `FINANCIAL_BEANCOUNT_WINDOWS_TIMESTAMP_URL`, `FINANCIAL_BEANCOUNT_WINDOWS_PUBLISHER` | Windows release publisher | Implemented; real certificate provisioning pending |
+| macOS | Secrets `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE`, `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE_PASSWORD`, `FINANCIAL_BEANCOUNT_APPLE_ID`, `FINANCIAL_BEANCOUNT_APPLE_APP_PASSWORD`; variables `FINANCIAL_BEANCOUNT_MACOS_SIGNING_IDENTITY`, `FINANCIAL_BEANCOUNT_APPLE_TEAM_ID` | Apple Developer account holder | Implemented in workflow; clean-runner validation pending |
+| Linux | To be defined with the selected package format and dedicated signing key | Linux release publisher | Not implemented; publication blocker |
+
+Certificate renewal, revocation and operator handover are deployment operations. Before rotating any
+identity, the publisher must verify the new trust chain in a preview/release-candidate run, update the
+pinned public identity where applicable, preserve rollback access to the last trusted build, and
+record the rotation in release notes. Revoked or expired credentials must never be bypassed by
+disabling a gate.
+
 ## Implemented gates
 
 - deterministic platform archives and SHA-256 manifests;
@@ -128,3 +157,29 @@ preview artifacts. With the protected configuration above, signed mode Authentic
 application, updater and MSI and must pass the strict native verification gate; this makes the
 Windows artifact eligible for release review, but does not remove the macOS/Linux publication
 blockers.
+
+## macOS DMG preview
+
+Unsigned macOS development builds now create a compressed read-only DMG containing the preserved
+`FinancialBeancount.app` bundle and an `/Applications` symlink. The macOS CI job mounts the image
+read-only, validates both entries, performs a replacement installation in a disposable Applications
+directory, and proves that a ledger sentinel under the separate Application Support directory
+survives replacement and application removal.
+
+Signed mode imports a protected Developer ID Application certificate into a temporary keychain,
+enables hardened runtime and secure timestamps, signs the application and DMG, waits for an explicit
+`Accepted` result from `notarytool`, staples and validates the ticket, performs Gatekeeper assessment,
+records native evidence and runs the strict macOS Release gate. It has no unsigned fallback.
+
+The signed macOS job requires:
+
+- Actions secret `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE`: base64 PKCS#12 Developer ID certificate;
+- Actions secret `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE_PASSWORD`;
+- repository variable `FINANCIAL_BEANCOUNT_MACOS_SIGNING_IDENTITY`;
+- Actions secrets `FINANCIAL_BEANCOUNT_APPLE_ID` and
+  `FINANCIAL_BEANCOUNT_APPLE_APP_PASSWORD`;
+- repository variable `FINANCIAL_BEANCOUNT_APPLE_TEAM_ID`.
+
+The temporary keychain and certificate are deleted on every exit. This path remains unverified until
+it runs with the real credentials on a clean macOS runner, and the overall release remains blocked by
+Linux packaging.

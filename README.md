@@ -123,6 +123,27 @@ pinning. It becomes usable only after protected certificate credentials and repo
 provisioned; it has no unsigned fallback. macOS and Linux native distribution signing remain release
 blockers.
 
+#### Release operator configuration
+
+Code-signing certificates and platform accounts are deployment credentials. They are configured by
+the person or organization that publishes a fork's releases, not by end users, and must never be
+committed to this repository. Ordinary contributors and users can build unsigned preview artifacts
+without these credentials. Selecting `signed_release` deliberately fails when any required identity
+is unavailable; there is no development certificate or unsigned fallback.
+
+The official repository's release operator must provision protected GitHub Actions secrets and
+repository variables for the Ed25519 update identity plus each platform being published. Windows
+requires a trusted Authenticode PKCS#12 certificate, its password, an HTTPS RFC 3161 timestamp URL
+and the expected publisher. macOS requires a Developer ID Application PKCS#12 certificate, its
+password, signing identity, Apple ID, app-specific password and Team ID. Linux credential names will
+be fixed together with the selected native package/signing format. Fork publishers provide their own
+identities and embed the matching update public key in their builds.
+
+The complete variable names, protection expectations, platform status, verification commands and
+publication blockers are maintained in [`docs/RELEASE.md`](docs/RELEASE.md). That document must be
+updated in the same change whenever a release credential, package format, signing command, supported
+upgrade range or publication gate changes.
+
 Release-candidate acceptance can also run against the maintainer's complete private statement set.
 The acceptance command imports every supported extracted statement independently, reports skipped
 or unprocessed files, keeps ambiguous matches for review, exports one portable ledger archive, and

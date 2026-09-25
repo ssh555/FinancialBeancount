@@ -88,6 +88,14 @@ review, and end-to-end tests are complete.
   timestamps the main executable, updater and MSI, immediately verifies each Authenticode chain,
   pins the expected publisher in hash-bound evidence, and runs the strict Windows publication gate.
   No test certificate or unsigned fallback is accepted when signed mode is requested.
+- macOS development builds produce a compressed read-only drag-to-Applications DMG. A macOS runner
+  mounts it, verifies the application and Applications link, performs a disposable replacement
+  upgrade/removal, and proves the separately stored Application Support ledger survives. Developer
+  ID signing and notarization remain mandatory before enabling the macOS publication gate.
+- The signed macOS workflow imports a protected Developer ID certificate into an ephemeral keychain,
+  signs the hardened-runtime application and DMG with secure timestamps, requires an accepted Apple
+  notarization result, staples and validates the ticket, runs Gatekeeper assessment, records native
+  evidence and enters the strict macOS publication gate without an unsigned fallback.
 
 Windows credential provisioning, macOS/Linux native installer construction and installer upgrades
 from every published version remain future release batches.
