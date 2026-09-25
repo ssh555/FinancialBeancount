@@ -64,6 +64,9 @@ review, and end-to-end tests are complete.
   open of schema 8, schema 9 and current-schema ledgers. It verifies canonical data preservation,
   pre-migration backups, and coupled database/binary rollback on an injected migration failure.
   Published versions must be added to this fixture matrix before their Release is considered supported.
+- Privacy gates enforce that the updater is the only outbound HTTP client, bundled web assets do not
+  reference third-party resources, ledger API responses remain `no-store`, and the service worker
+  never caches `/api/` data. The local server emits restrictive CSP, frame, MIME and referrer headers.
 - Schema upgrades from every historical ledger schema (8 and 9) create and validate a checksummed
   backup before writes, run inside one transaction, preserve a migration audit record, and retain
   the original schema on failure. Desktop and CLI recovery paths require explicit confirmation.

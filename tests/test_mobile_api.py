@@ -121,9 +121,17 @@ def test_server_reports_dynamic_port_and_stops_cleanly(tmp_path):
     assert ready.wait(3)
     with urlopen(f"{location['url']}/api/v1/health", timeout=3) as response:
         payload = json.load(response)
+        api_cache_control = response.headers["Cache-Control"]
+        api_referrer_policy = response.headers["Referrer-Policy"]
+    with urlopen(f"{location['url']}/index.html", timeout=3) as response:
+        content_security_policy = response.headers["Content-Security-Policy"]
     stop.set()
 
     assert payload["data"]["status"] == "ok"
+    assert api_cache_control == "no-store"
+    assert api_referrer_policy == "no-referrer"
+    assert "connect-src 'self'" in content_security_policy
+    assert "object-src 'none'" in content_security_policy
     assert stopped.wait(3)
 
 

@@ -106,6 +106,17 @@ and current 10), checking migration backups and preserved canonical data. An inj
 failure must leave the old database schema intact and roll the application binary back. Each future
 published version must remain represented in this matrix until its upgrade support window ends.
 
+The release privacy boundary is documented in [`docs/PRIVACY.md`](docs/PRIVACY.md). There is no
+telemetry or automatic ledger upload: only a user-triggered update check can make an outbound request,
+and automated gates restrict that client to the updater. API responses are never browser-cached, the
+service worker caches only same-origin application-shell files, and the web UI uses a restrictive
+Content Security Policy.
+
+Maintainer-facing publication blockers and the external code-signing credentials that are still
+required are recorded in [`docs/RELEASE.md`](docs/RELEASE.md). Until those platform signatures and
+installers are implemented and verified, workflow artifacts remain development previews rather than
+public Releases.
+
 ### Recoverable Database Upgrades
 
 Existing Schema 8 or 9 ledgers are upgraded transactionally to the current schema. Before any
