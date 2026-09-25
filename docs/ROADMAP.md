@@ -74,6 +74,11 @@ review, and end-to-end tests are complete.
   open normalized strings (with compatibility for built-in enum values), and external adapters use a
   narrow persistence contract, so a new provider or statement version does not require a database
   or ledger-core change. Built-in parsing flows are registered outside the core importer.
+- Native installer signature verification has a fail-closed cross-platform evidence contract:
+  Windows runs Authenticode policy and timestamp verification, macOS requires both strict code-sign
+  validation and Gatekeeper assessment, and Linux verifies a detached signature against a dedicated
+  keyring. Every verifier pins the configured publisher/fingerprint and binds evidence to the exact
+  installer digest; the publication gate rejects legacy self-reported evidence.
 
-Operating-system code-signing verification and signed installers
-from every published version remain future release batches.
+Signing credential provisioning, native installer construction and in-place installer upgrades from
+every published version remain future release batches.

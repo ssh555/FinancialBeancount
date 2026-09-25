@@ -70,7 +70,7 @@ def inspect_release(
         checks.append(_signed_manifest_check(checksum, signature, public_key))
         installer = _native_installer(artifacts, suffix, platform_name)
         checks.append(GateCheck("native-installer", installer.is_file(), str(installer)))
-        checks.append(_signature_evidence_check(installer))
+        checks.append(_signature_evidence_check(installer, platform_name))
     return checks
 
 
@@ -126,16 +126,25 @@ def _native_installer(artifacts: Path, suffix: str, platform_name: str) -> Path:
     return artifacts / f"FinancialBeancount-{suffix}{extension}"
 
 
-def _signature_evidence_check(installer: Path) -> GateCheck:
+def _signature_evidence_check(installer: Path, platform_name: str) -> GateCheck:
     evidence = installer.with_suffix(f"{installer.suffix}.signature.json")
     valid = False
     if installer.is_file() and evidence.is_file():
         try:
             payload = json.loads(evidence.read_text(encoding="utf-8"))
             valid = (
-                payload.get("verified") is True
+                payload.get("schema") == 1
+                and payload.get("verified") is True
+                and payload.get("platform") == platform_name
+                and payload.get("artifact_name") == installer.name
                 and payload.get("artifact_sha256")
                 == hashlib.sha256(installer.read_bytes()).hexdigest()
+                and isinstance(payload.get("identity"), str)
+                and bool(payload["identity"].strip())
+                and isinstance(payload.get("verifier"), str)
+                and bool(payload["verifier"].strip())
+                and isinstance(payload.get("verified_at"), str)
+                and bool(payload["verified_at"].strip())
             )
         except (OSError, json.JSONDecodeError):
             valid = False

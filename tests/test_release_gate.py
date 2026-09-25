@@ -81,6 +81,41 @@ def test_release_gate_accepts_matching_signature_evidence(tmp_path: Path) -> Non
     installer.with_suffix(".msi.signature.json").write_text(
         json.dumps(
             {
+                "schema": 1,
+                "verified": True,
+                "platform": "windows",
+                "artifact_name": installer.name,
+                "artifact_sha256": hashlib.sha256(installer.read_bytes()).hexdigest(),
+                "identity": "Example Publisher",
+                "verifier": "signtool verify /pa /tw",
+                "verified_at": "2026-09-25T00:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    checks = inspect_release(
+        repository, artifacts, mode="release", platform_name="windows", architecture="X64"
+    )
+
+    assert all(check.passed for check in checks)
+
+
+def test_release_gate_rejects_legacy_self_reported_signature_evidence(tmp_path: Path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    public_key = base64.b64encode(private_key.public_key().public_bytes_raw()).decode()
+    repository = _repository(tmp_path, public_key)
+    artifacts = tmp_path / "artifacts"
+    archive = _archive(artifacts)
+    checksum = archive.with_suffix(".zip.sha256")
+    archive.with_suffix(".zip.sha256.sig").write_bytes(
+        base64.b64encode(private_key.sign(checksum.read_bytes())) + b"\n"
+    )
+    installer = artifacts / "FinancialBeancount-windows-X64.msi"
+    installer.write_bytes(b"signed-installer")
+    installer.with_suffix(".msi.signature.json").write_text(
+        json.dumps(
+            {
                 "verified": True,
                 "artifact_sha256": hashlib.sha256(installer.read_bytes()).hexdigest(),
             }
@@ -92,4 +127,4 @@ def test_release_gate_accepts_matching_signature_evidence(tmp_path: Path) -> Non
         repository, artifacts, mode="release", platform_name="windows", architecture="X64"
     )
 
-    assert all(check.passed for check in checks)
+    assert next(check for check in checks if check.name == "os-signature-verification").passed is False

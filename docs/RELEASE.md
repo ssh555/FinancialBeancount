@@ -25,6 +25,31 @@ python scripts/release_gate.py --repository . --artifacts artifacts \
 `--mode release` is intentionally not enabled in the workflow yet: it must fail until the native
 installer and platform-signature stages described below exist.
 
+Platform verification evidence must be generated on the matching clean runner after signing. The
+verifier pins the expected publisher or key fingerprint, rejects a non-zero native-tool result, and
+binds its structured evidence to the installer name and SHA-256:
+
+```bash
+# Windows: trusted Authenticode chain, timestamp and expected publisher
+python scripts/verify_platform_signature.py --platform windows \
+  --installer artifacts/FinancialBeancount-windows-X64.msi \
+  --expected-identity "<certificate publisher>"
+
+# macOS: strict codesign verification plus Gatekeeper assessment
+python scripts/verify_platform_signature.py --platform macos \
+  --installer artifacts/FinancialBeancount-macos-ARM64.dmg \
+  --expected-identity "<Developer ID identity>"
+
+# Linux: detached signature verified by a dedicated release keyring
+python scripts/verify_platform_signature.py --platform linux \
+  --installer artifacts/FinancialBeancount-linux-X64.AppImage \
+  --detached-signature artifacts/FinancialBeancount-linux-X64.AppImage.asc \
+  --keyring release-keyring.gpg --expected-identity "<full signing fingerprint>"
+```
+
+The release gate rejects the earlier two-field self-reported JSON shape. Evidence now records its
+schema, platform, artifact name, digest, pinned identity, native verifier and verification time.
+
 ## Complete private-ledger acceptance
 
 Before a release candidate is approved, maintainers can import the complete private statement set,
