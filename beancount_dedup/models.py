@@ -23,6 +23,30 @@ class Platform(Enum):
         return self.value
 
 
+SourceId = Platform | str
+
+
+def normalize_source_id(value: SourceId) -> SourceId:
+    """Keep known sources compatible while accepting stable third-party identifiers."""
+
+    if isinstance(value, Platform):
+        return value
+    normalized = value.strip().lower()
+    if not normalized:
+        raise ValueError("source identifier is required")
+    try:
+        return Platform(normalized)
+    except ValueError:
+        return normalized
+
+
+def source_id_value(value: SourceId) -> str:
+    """Return the durable database/API representation of a source identifier."""
+
+    normalized = normalize_source_id(value)
+    return normalized.value if isinstance(normalized, Platform) else normalized
+
+
 class TransactionType(Enum):
     """交易类型"""
 

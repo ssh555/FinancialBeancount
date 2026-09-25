@@ -55,8 +55,10 @@ _EXPORTS = {
     "ReviewSession": ("review", "ReviewSession"),
     "ReviewStatus": ("ledger_models", "ReviewStatus"),
     "SourceRecordLink": ("ledger_models", "SourceRecordLink"),
+    "SourceId": ("models", "SourceId"),
     "StateStore": ("state", "StateStore"),
     "StatementAdapter": ("statement_adapters", "StatementAdapter"),
+    "StatementImportContext": ("statement_adapters", "StatementImportContext"),
     "StatementAdapterRegistry": ("statement_adapters", "StatementAdapterRegistry"),
     "StatementImportError": ("statement_importer", "StatementImportError"),
     "StatementImporter": ("statement_importer", "StatementImporter"),
@@ -78,7 +80,9 @@ _EXPORTS = {
     "inspect_backup": ("backup", "inspect_backup"),
     "inspect_portable_archive": ("portable_archive", "inspect_portable_archive"),
     "load_config": ("config", "load_config"),
+    "normalize_source_id": ("models", "normalize_source_id"),
     "restore_backup": ("backup", "restore_backup"),
+    "source_id_value": ("models", "source_id_value"),
     "serve_mobile_api": ("mobile_api", "serve_mobile_api"),
 }
 

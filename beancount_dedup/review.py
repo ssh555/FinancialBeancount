@@ -10,7 +10,7 @@ from typing import Any
 
 from .ledger_models import CanonicalTransaction, RawTransaction, ReviewStatus
 from .ledger_store import LedgerStore, RawImportResult
-from .models import TransactionType
+from .models import TransactionType, source_id_value
 
 REVIEW_DECISIONS = {"confirmed", "rejected", "modified"}
 
@@ -295,7 +295,7 @@ class ImportReviewService:
             amount=raw.amount,
             direction=raw.direction,
             merchant=raw.merchant or raw.counterparty,
-            payment_channel=raw.source.value,
+            payment_channel=source_id_value(raw.source),
             funding_account=raw.payment_method or raw.source_account,
             tx_type=tx_type,
             status=raw.status,

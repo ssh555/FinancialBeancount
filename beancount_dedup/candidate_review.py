@@ -12,7 +12,7 @@ from typing import Any
 from .canonical_matcher import ConservativeMatcher, MatchCandidate
 from .ledger_models import CanonicalTransaction, RawTransaction, ReviewStatus
 from .ledger_store import LedgerStore
-from .models import TransactionType
+from .models import TransactionType, source_id_value
 
 
 @dataclass(frozen=True)
@@ -210,7 +210,7 @@ class CandidateReviewService:
             "amount": payment.amount,
             "direction": payment.direction,
             "merchant": payment.merchant or payment.counterparty,
-            "payment_channel": payment.source.value,
+            "payment_channel": source_id_value(payment.source),
             "funding_account": group.bank.source_account,
             "status": payment.status,
             "review_status": ReviewStatus.CONFIRMED,

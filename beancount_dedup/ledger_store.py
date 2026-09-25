@@ -21,7 +21,7 @@ from .ledger_models import (
     ReviewStatus,
     SourceRecordLink,
 )
-from .models import Platform, TransactionType
+from .models import SourceId, TransactionType, normalize_source_id, source_id_value
 
 SCHEMA_VERSION = 10
 MINIMUM_UPGRADABLE_SCHEMA_VERSION = 8
@@ -40,7 +40,7 @@ class ImportBatch:
     """One source file import attempt, identified by its content hash."""
 
     batch_id: str
-    source: Platform
+    source: SourceId
     source_file: str
     source_file_hash: str
     imported_at: datetime
@@ -570,7 +570,7 @@ class LedgerStore:
             )
 
     def start_import_batch(
-        self, source: Platform, source_file: str, source_file_hash: str
+        self, source: SourceId, source_file: str, source_file_hash: str
     ) -> tuple[ImportBatch, bool]:
         """Create an import batch, or return the prior batch for the same file."""
 
@@ -582,7 +582,7 @@ class LedgerStore:
 
         batch = ImportBatch(
             batch_id=str(uuid.uuid4()),
-            source=source,
+            source=normalize_source_id(source),
             source_file=source_file,
             source_file_hash=source_file_hash,
             imported_at=datetime.now(),
@@ -596,7 +596,7 @@ class LedgerStore:
                 """,
                 (
                     batch.batch_id,
-                    batch.source.value,
+                    source_id_value(batch.source),
                     batch.source_file,
                     batch.source_file_hash,
                     batch.imported_at.isoformat(),
@@ -691,7 +691,7 @@ class LedgerStore:
             (
                 raw.raw_id,
                 raw.deduplication_key,
-                raw.source.value,
+                source_id_value(raw.source),
                 raw.source_account,
                 raw.transaction_time.isoformat() if raw.transaction_time else None,
                 raw.booking_date.isoformat() if raw.booking_date else None,
@@ -1243,7 +1243,7 @@ class LedgerStore:
     def _batch_from_row(row: sqlite3.Row) -> ImportBatch:
         return ImportBatch(
             batch_id=row["batch_id"],
-            source=Platform(row["source"]),
+            source=normalize_source_id(row["source"]),
             source_file=row["source_file"],
             source_file_hash=row["source_file_hash"],
             imported_at=datetime.fromisoformat(row["imported_at"]),
@@ -1253,7 +1253,7 @@ class LedgerStore:
     def _raw_from_row(row: sqlite3.Row) -> RawTransaction:
         return RawTransaction(
             raw_id=row["raw_id"],
-            source=Platform(row["source"]),
+            source=normalize_source_id(row["source"]),
             source_account=row["source_account"],
             transaction_time=datetime.fromisoformat(row["transaction_time"])
             if row["transaction_time"]

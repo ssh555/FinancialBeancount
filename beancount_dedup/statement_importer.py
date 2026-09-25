@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from itertools import pairwise
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from .statement_adapters import StatementAdapterRegistry
 
 from .ledger_models import RawTransaction
 from .ledger_store import LedgerStore
-from .models import Platform
+from .models import Platform, SourceId, normalize_source_id
 from .review import ImportReviewService
 
 WECHAT_HEADERS = {
@@ -54,7 +54,7 @@ class StatementImportError(ValueError):
 class ImportSummary:
     batch_id: str
     import_run_id: str
-    source: Platform
+    source: SourceId
     parsed_count: int
     created_count: int
     existing_count: int
@@ -102,100 +102,19 @@ class StatementImporter:
         )
 
     def import_wechat_xlsx(self, path: str | Path, source_account: str) -> ImportSummary:
-        """Import an official WeChat payment statement without modifying it."""
+        """Compatibility wrapper for the registered WeChat adapter."""
 
-        try:
-            import openpyxl
-        except ImportError as exc:
-            raise RuntimeError("openpyxl is required for WeChat XLSX import") from exc
-
-        statement_path = Path(path)
-        file_hash = _file_sha256(statement_path)
-        workbook = openpyxl.load_workbook(statement_path, read_only=True, data_only=True)
-        try:
-            worksheet = workbook.active
-            rows = list(worksheet.iter_rows(values_only=True))
-        finally:
-            workbook.close()
-
-        header_index, headers = _find_header(rows, WECHAT_HEADERS)
-        parsed = []
-        errors = []
-        for zero_based_index, values in enumerate(rows[header_index + 1 :], header_index + 1):
-            row_number = zero_based_index + 1
-            row = _row_dict(headers, values)
-            if not any(row.values()):
-                continue
-            try:
-                parsed.append(
-                    _wechat_raw(
-                        row,
-                        row_number=row_number,
-                        source_account=source_account,
-                        source_file=statement_path.name,
-                        source_file_hash=file_hash,
-                    )
-                )
-            except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
-                errors.append(f"row {row_number}: {exc}")
-        return self._persist(Platform.WECHAT, statement_path.name, file_hash, parsed, errors)
+        return self.import_statement("wechat.xlsx", path, source_account)
 
     def import_alipay_csv(self, path: str | Path, source_account: str) -> ImportSummary:
-        """Import the current official Alipay CSV format."""
+        """Compatibility wrapper for the registered Alipay adapter."""
 
-        statement_path = Path(path)
-        file_hash = _file_sha256(statement_path)
-        text = _decode_csv(statement_path.read_bytes())
-        rows = list(csv.reader(text.splitlines()))
-        header_index, headers = _find_header(rows, ALIPAY_HEADERS)
-        parsed = []
-        errors = []
-        for zero_based_index, values in enumerate(rows[header_index + 1 :], header_index + 1):
-            row_number = zero_based_index + 1
-            row = _row_dict(headers, values)
-            if not any(row.values()):
-                continue
-            try:
-                parsed.append(
-                    _alipay_raw(
-                        row,
-                        row_number=row_number,
-                        source_account=source_account,
-                        source_file=statement_path.name,
-                        source_file_hash=file_hash,
-                    )
-                )
-            except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
-                errors.append(f"row {row_number}: {exc}")
-        return self._persist(Platform.ALIPAY, statement_path.name, file_hash, parsed, errors)
+        return self.import_statement("alipay.csv", path, source_account)
 
     def import_cmb_pdf(self, path: str | Path, source_account: str) -> ImportSummary:
-        """Import a date-only China Merchants Bank statement by page coordinates."""
+        """Compatibility wrapper for the registered CMB adapter."""
 
-        pdfplumber = _load_pdfplumber()
-        statement_path = Path(path)
-        file_hash = _file_sha256(statement_path)
-        parsed = []
-        errors = []
-        with pdfplumber.open(statement_path) as pdf:
-            for page_number, page in enumerate(pdf.pages, 1):
-                records = _extract_cmb_page(page, page_number)
-                for record_number, row in enumerate(records, 1):
-                    row_number = page_number * 10000 + record_number
-                    try:
-                        parsed.append(
-                            _cmb_raw(
-                                row,
-                                row_number=row_number,
-                                source_account=source_account,
-                                source_file=statement_path.name,
-                                source_file_hash=file_hash,
-                            )
-                        )
-                    except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
-                        errors.append(f"page {page_number} record {record_number}: {exc}")
-        errors.extend(_balance_chain_errors(parsed))
-        return self._persist(Platform.BANK, statement_path.name, file_hash, parsed, errors)
+        return self.import_statement("cmb.pdf", path, source_account)
 
     def import_icbc_pdf(
         self,
@@ -203,60 +122,21 @@ class StatementImporter:
         source_account: str,
         password: str | None = None,
     ) -> ImportSummary:
-        """Import an ICBC table statement, including encrypted official exports."""
+        """Compatibility wrapper for the registered ICBC adapter."""
 
-        pdfplumber = _load_pdfplumber()
-        statement_path = Path(path)
-        file_hash = _file_sha256(statement_path)
-        effective_password = password or _filename_password(statement_path)
-        parsed = []
-        errors = []
-        with pdfplumber.open(statement_path, password=effective_password) as pdf:
-            for page_number, page in enumerate(pdf.pages, 1):
-                # The official PDF overlays large diagonal watermark text on the table.
-                # Transaction text is 6.5-7pt; filtering larger characters prevents
-                # watermark digits from contaminating dates, amounts, and balances.
-                transaction_layer = page.filter(
-                    lambda obj: obj.get("object_type") != "char" or float(obj.get("size", 0)) <= 7.1
-                )
-                tables = transaction_layer.extract_tables()
-                if len(tables) != 1:
-                    errors.append(
-                        f"page {page_number}: expected one transaction table, found {len(tables)}"
-                    )
-                    continue
-                table = tables[0]
-                if not table or not _is_icbc_header(table[0]):
-                    errors.append(f"page {page_number}: ICBC table header is invalid")
-                    continue
-                for record_number, values in enumerate(table[1:], 1):
-                    if not any(_cell_text(value) for value in values):
-                        continue
-                    row_number = page_number * 10000 + record_number
-                    row = _icbc_row(values)
-                    try:
-                        parsed.append(
-                            _icbc_raw(
-                                row,
-                                row_number=row_number,
-                                source_account=source_account,
-                                source_file=statement_path.name,
-                                source_file_hash=file_hash,
-                            )
-                        )
-                    except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
-                        errors.append(f"page {page_number} record {record_number}: {exc}")
-        errors.extend(_balance_chain_errors(parsed))
-        return self._persist(Platform.BANK, statement_path.name, file_hash, parsed, errors)
+        return self.import_statement("icbc.pdf", path, source_account, password=password)
 
-    def _persist(
+    def persist(
         self,
-        source: Platform,
+        source: SourceId,
         source_file: str,
         file_hash: str,
         parsed: list[RawTransaction],
         errors: list[str],
     ) -> ImportSummary:
+        """Validate and atomically store normalized rows produced by any adapter."""
+
+        source = normalize_source_id(source)
         if errors:
             preview = "; ".join(errors[:10])
             remainder = len(errors) - min(len(errors), 10)

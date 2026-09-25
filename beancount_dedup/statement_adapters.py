@@ -9,7 +9,22 @@ from typing import TYPE_CHECKING, Any, Protocol
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .statement_importer import ImportSummary, StatementImporter
+    from .ledger_models import RawTransaction
+    from .models import SourceId
+    from .statement_importer import ImportSummary
+
+
+class StatementImportContext(Protocol):
+    """Minimal stable service surface available to external statement adapters."""
+
+    def persist(
+        self,
+        source: SourceId,
+        source_file: str,
+        file_hash: str,
+        parsed: list[RawTransaction],
+        errors: list[str],
+    ) -> ImportSummary: ...
 
 
 class StatementAdapter(Protocol):
@@ -26,7 +41,7 @@ class StatementAdapter(Protocol):
 
     def import_statement(
         self,
-        importer: StatementImporter,
+        importer: StatementImportContext,
         path: str | Path,
         source_account: str,
         **options: Any,
@@ -42,7 +57,7 @@ class FunctionStatementAdapter:
 
     def import_statement(
         self,
-        importer: StatementImporter,
+        importer: StatementImportContext,
         path: str | Path,
         source_account: str,
         **options: Any,
@@ -85,7 +100,7 @@ class StatementAdapterRegistry:
 
     def import_statement(
         self,
-        importer: StatementImporter,
+        importer: StatementImportContext,
         format_id: str,
         path: str | Path,
         source_account: str,
@@ -101,13 +116,20 @@ class StatementAdapterRegistry:
 
 
 def create_builtin_statement_registry() -> StatementAdapterRegistry:
+    from .builtin_statement_formats import (
+        import_alipay_csv,
+        import_cmb_pdf,
+        import_icbc_pdf,
+        import_wechat_xlsx,
+    )
+
     registry = StatementAdapterRegistry()
     registry.register(
         FunctionStatementAdapter(
             "wechat.xlsx",
             "微信支付官方 XLSX",
             (".xlsx",),
-            lambda importer, path, account, **options: importer.import_wechat_xlsx(path, account),
+            import_wechat_xlsx,
         )
     )
     registry.register(
@@ -115,7 +137,7 @@ def create_builtin_statement_registry() -> StatementAdapterRegistry:
             "alipay.csv",
             "支付宝官方 CSV",
             (".csv",),
-            lambda importer, path, account, **options: importer.import_alipay_csv(path, account),
+            import_alipay_csv,
         )
     )
     registry.register(
@@ -123,7 +145,7 @@ def create_builtin_statement_registry() -> StatementAdapterRegistry:
             "cmb.pdf",
             "招商银行官方 PDF",
             (".pdf",),
-            lambda importer, path, account, **options: importer.import_cmb_pdf(path, account),
+            import_cmb_pdf,
         )
     )
     registry.register(
@@ -131,9 +153,7 @@ def create_builtin_statement_registry() -> StatementAdapterRegistry:
             "icbc.pdf",
             "工商银行官方 PDF",
             (".pdf",),
-            lambda importer, path, account, **options: importer.import_icbc_pdf(
-                path, account, password=options.get("password")
-            ),
+            import_icbc_pdf,
         )
     )
     return registry

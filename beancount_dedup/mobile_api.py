@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 from .candidate_review import CandidateReviewEvent, CandidateReviewGroup, CandidateReviewService
 from .ledger_models import CanonicalTransaction, RawTransaction, ReviewStatus
 from .ledger_store import SCHEMA_VERSION, LedgerStore
-from .models import TransactionType
+from .models import TransactionType, source_id_value
 from .portable_archive import export_portable_archive
 from .refund_relationships import RefundCandidate, RefundRelationshipService, RefundReviewEvent
 from .review import ImportReviewService, ReviewEvent, ReviewItem, ReviewSession
@@ -285,7 +285,7 @@ class MobileLedgerApi:
             {
                 "batch_id": summary.batch_id,
                 "import_run_id": summary.import_run_id,
-                "source": summary.source.value,
+                "source": source_id_value(summary.source),
                 "parsed_count": summary.parsed_count,
                 "created_count": summary.created_count,
                 "existing_count": summary.existing_count,

@@ -16,7 +16,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-from .models import Platform, TransactionType
+from .models import Platform, SourceId, TransactionType, normalize_source_id, source_id_value
 
 
 class ReviewStatus(Enum):
@@ -37,7 +37,7 @@ class RawTransaction:
     different platforms automatically.
     """
 
-    source: Platform
+    source: SourceId
     source_account: str
     amount: Decimal
     direction: str
@@ -64,8 +64,7 @@ class RawTransaction:
         object.__setattr__(self, "amount", Decimal(str(self.amount)))
         if self.balance is not None:
             object.__setattr__(self, "balance", Decimal(str(self.balance)))
-        if isinstance(self.source, str):
-            object.__setattr__(self, "source", Platform(self.source))
+        object.__setattr__(self, "source", normalize_source_id(self.source))
         if self.bank_card_suffix and not (
             self.bank_card_suffix.isdigit() and len(self.bank_card_suffix) == 4
         ):
@@ -78,7 +77,7 @@ class RawTransaction:
         primary_external_id = self.transaction_id or self.merchant_order_id
         if primary_external_id:
             identity: dict[str, Any] = {
-                "source": self.source.value,
+                "source": source_id_value(self.source),
                 "source_account": self.source_account,
                 "external_id": primary_external_id,
             }
@@ -87,7 +86,7 @@ class RawTransaction:
             # Jan-Dec).  A running balance makes the source observation stable
             # across those files without merging two distinct same-day spends.
             identity = {
-                "source": self.source.value,
+                "source": source_id_value(self.source),
                 "source_account": self.source_account,
                 "transaction_time": self.transaction_time.isoformat()
                 if self.transaction_time
@@ -107,7 +106,7 @@ class RawTransaction:
             # file row remains the safest identity; collapsing identical rows
             # here could erase two genuinely separate transactions.
             identity = {
-                "source": self.source.value,
+                "source": source_id_value(self.source),
                 "source_account": self.source_account,
                 "source_file_hash": self.source_file_hash,
                 "raw_row_number": self.raw_row_number,
@@ -117,9 +116,9 @@ class RawTransaction:
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def to_dict(self, include_original_row: bool = True) -> dict[str, Any]:
-        result = {
+        result: dict[str, Any] = {
             "raw_id": self.raw_id,
-            "source": self.source.value,
+            "source": source_id_value(self.source),
             "source_account": self.source_account,
             "transaction_time": self.transaction_time.isoformat()
             if self.transaction_time

@@ -1,9 +1,13 @@
 """Tests for the public statement-adapter extension boundary."""
 
+import hashlib
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from beancount_dedup.ledger_models import RawTransaction
 from beancount_dedup.ledger_store import LedgerStore
 from beancount_dedup.statement_adapters import (
     StatementAdapterRegistry,
@@ -35,8 +39,6 @@ def test_unknown_and_wrong_extension_are_rejected_before_parsing(tmp_path):
 
 
 def test_third_party_adapter_can_be_registered_without_core_changes(tmp_path):
-    calls = []
-
     @dataclass(frozen=True)
     class ExampleAdapter:
         format_id: str = "example.json"
@@ -44,19 +46,45 @@ def test_third_party_adapter_can_be_registered_without_core_changes(tmp_path):
         extensions: tuple[str, ...] = (".json",)
 
         def import_statement(self, importer, path, source_account, **options):
-            calls.append((Path(path).name, source_account, options))
-            return "extension-result"
+            statement = Path(path)
+            return importer.persist(
+                "example-bank",
+                statement.name,
+                hashlib.sha256(statement.read_bytes()).hexdigest(),
+                [
+                    RawTransaction(
+                        source="example-bank",
+                        source_account=source_account,
+                        booking_date=date(2026, 9, 25),
+                        amount=Decimal("12.34"),
+                        direction="expense",
+                        merchant="示例商户",
+                        original_row={"provider_field": "kept"},
+                        source_file=statement.name,
+                        source_file_hash="adapter-owned",
+                        raw_row_number=1,
+                    )
+                ],
+                [],
+            )
 
     registry = StatementAdapterRegistry()
     registry.register(ExampleAdapter())
+    statement = tmp_path / "statement.json"
+    statement.write_text("{}", encoding="utf-8")
     with LedgerStore(tmp_path / "ledger.sqlite3") as store:
         importer = StatementImporter(store, registry)
         result = importer.import_statement(
-            "example.json", tmp_path / "statement.json", "example-account", locale="zh-CN"
+            "example.json", statement, "example-account", locale="zh-CN"
         )
+        raw_id = store.connection.execute(
+            "SELECT raw_id FROM raw_transactions WHERE import_batch_id = ?", (result.batch_id,)
+        ).fetchone()[0]
+        raw = store.get_raw(raw_id)
 
-    assert result == "extension-result"
-    assert calls == [("statement.json", "example-account", {"locale": "zh-CN"})]
+    assert result.source == "example-bank"
+    assert raw is not None and raw.source == "example-bank"
+    assert raw.original_row == {"provider_field": "kept"}
 
 
 def test_duplicate_adapter_requires_explicit_replace():

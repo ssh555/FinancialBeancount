@@ -100,6 +100,20 @@ financial-beancount-backup restore --backup path/to/backup.financial-beancount.z
 Databases newer than the running application, databases older than the supported migration floor,
 and unversioned non-empty databases are refused without modification.
 
+### Unified Ledger Schema and Statement Adapters
+
+All providers write the same `raw_transactions` observation schema and the same
+`canonical_transactions` economic-transaction schema. Provider-only columns remain losslessly in
+`original_row_json`; no provider receives its own database tables. Known source identifiers remain
+compatible with the `Platform` enum, while adapters may use a normalized stable string such as
+`example-bank` without changing the enum or database schema.
+
+`StatementAdapter` is the public format boundary. An adapter validates its own file content,
+converts rows to `RawTransaction`, then calls the narrow `StatementImportContext.persist()` service;
+matching, review, CRUD, statistics, backup and export continue to operate on the unified models.
+Built-in WeChat, Alipay, CMB and ICBC parsing is registered outside the core importer. Contract tests
+prove that a separately defined source can be registered and persisted without core or schema edits.
+
 ## Project Structure
 
 ```

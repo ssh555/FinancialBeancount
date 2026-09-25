@@ -55,6 +55,10 @@ review, and end-to-end tests are complete.
 - Schema upgrades from every historical ledger schema (8 and 9) create and validate a checksummed
   backup before writes, run inside one transaction, preserve a migration audit record, and retain
   the original schema on failure. Desktop and CLI recovery paths require explicit confirmation.
+- Provider imports converge on one raw-observation and canonical-transaction schema. Source IDs are
+  open normalized strings (with compatibility for built-in enum values), and external adapters use a
+  narrow persistence contract, so a new provider or statement version does not require a database
+  or ledger-core change. Built-in parsing flows are registered outside the core importer.
 
 Platform signature verification, permission/elevation UX, signed installers, and upgrade testing
 from every published version remain future release batches.
