@@ -2,6 +2,12 @@ name: Desktop application build
 
 on:
   workflow_dispatch:
+    inputs:
+      signed_release:
+        description: Require release signing credentials and emit signed checksum manifests
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -23,6 +29,11 @@ jobs:
           python-version: "3.12"
       - name: Install application build dependencies
         run: python -m pip install ".[xlsx,pdf]" pyinstaller
+      - name: Inject trusted release public key
+        if: ${{ inputs.signed_release }}
+        env:
+          FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY: ${{ vars.FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY }}
+        run: python scripts/configure_release_identity.py
       - name: Build desktop application
         run: pyinstaller --clean --noconfirm FinancialBeancount.spec
       - name: Verify bundled web application
@@ -36,11 +47,22 @@ jobs:
           print(matches[0])
       - name: Verify packaged update helper
         run: python scripts/smoke_update_helper.py
-      - name: Package release asset and checksum
+      - name: Package development asset and checksum
+        if: ${{ !inputs.signed_release }}
         run: >-
           python scripts/package_desktop_artifact.py
           --source dist/FinancialBeancount
           --output artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.zip
+      - name: Package signed release asset
+        if: ${{ inputs.signed_release }}
+        env:
+          FINANCIAL_BEANCOUNT_RELEASE_SIGNING_KEY: ${{ secrets.FINANCIAL_BEANCOUNT_RELEASE_SIGNING_KEY }}
+          FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY: ${{ vars.FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY }}
+        run: >-
+          python scripts/package_desktop_artifact.py
+          --source dist/FinancialBeancount
+          --output artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.zip
+          --require-signature
       - uses: actions/upload-artifact@v4
         with:
           name: FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}

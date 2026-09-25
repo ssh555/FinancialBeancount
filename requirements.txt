@@ -1,6 +1,9 @@
 # Beancount 多平台账单去重工具依赖
 
-# 核心依赖（无需额外安装，Python 标准库）
+# 核心安全依赖
+cryptography>=41.0
+
+# 其余核心模块使用 Python 标准库
 # - csv
 # - io
 # - decimal

@@ -1,3 +1,4 @@
+import base64
 import json
 import zipfile
 from hashlib import sha256
@@ -19,6 +20,8 @@ from beancount_dedup.updater import (
     platform_asset_suffix,
     prepare_update_installation,
 )
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
 def release_payload(version: str = "v0.3.0") -> dict:
@@ -42,6 +45,11 @@ def release_payload(version: str = "v0.3.0") -> dict:
                 "name": f"{archive}.sha256",
                 "browser_download_url": f"https://example.test/{archive}.sha256",
                 "size": 100,
+            },
+            {
+                "name": f"{archive}.sha256.sig",
+                "browser_download_url": f"https://example.test/{archive}.sha256.sig",
+                "size": 89,
             },
         ],
     }
@@ -73,6 +81,7 @@ def test_evaluate_release_selects_newer_compatible_pair() -> None:
     assert update.publisher == "ssh555"
     assert update.archive.size == 10485760
     assert update.checksum.name.endswith(".zip.sha256")
+    assert update.signature.name.endswith(".zip.sha256.sig")
 
 
 def test_evaluate_release_ignores_current_draft_and_prerelease() -> None:
@@ -130,6 +139,14 @@ def test_download_and_verify_update_stages_matching_archive(tmp_path) -> None:
     content = b"verified desktop archive"
     digest = sha256(content).hexdigest()
     archive_name = "FinancialBeancount-windows-X64.zip"
+    private_key = Ed25519PrivateKey.generate()
+    public_key = base64.b64encode(
+        private_key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
+    ).decode()
+    checksum_bytes = f"{digest}  {archive_name}\n".encode()
+    signature_bytes = base64.b64encode(private_key.sign(checksum_bytes)) + b"\n"
     update = UpdateInfo(
         version="0.3.0",
         title="Preview",
@@ -141,22 +158,35 @@ def test_download_and_verify_update_stages_matching_archive(tmp_path) -> None:
         checksum=ReleaseAsset(
             f"{archive_name}.sha256", "https://example.test/app.zip.sha256", 100
         ),
+        signature=ReleaseAsset(
+            f"{archive_name}.sha256.sig", "https://example.test/app.zip.sha256.sig", 89
+        ),
     )
-    checksum = BytesIO(f"{digest}  {archive_name}\n".encode())
+    checksum = BytesIO(checksum_bytes)
+    signature = BytesIO(signature_bytes)
     archive = BytesIO(content)
 
-    with patch("urllib.request.urlopen", side_effect=[checksum, archive]):
-        staged = download_and_verify_update(update, tmp_path, timeout=1)
+    with patch("urllib.request.urlopen", side_effect=[checksum, signature, archive]):
+        staged = download_and_verify_update(update, tmp_path, timeout=1, public_key=public_key)
 
     assert staged.archive_path.read_bytes() == content
     assert staged.sha256 == digest
     assert staged.checksum_path.read_text(encoding="utf-8") == f"{digest}  {archive_name}\n"
+    assert staged.signature_path.read_bytes() == signature_bytes
     assert not list(tmp_path.rglob("*.part"))
 
 
 def test_download_and_verify_update_removes_partial_file_on_hash_failure(tmp_path) -> None:
     content = b"tampered"
     archive_name = "FinancialBeancount-windows-X64.zip"
+    private_key = Ed25519PrivateKey.generate()
+    public_key = base64.b64encode(
+        private_key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
+    ).decode()
+    checksum_bytes = f"{'0' * 64}  {archive_name}\n".encode()
+    signature_bytes = base64.b64encode(private_key.sign(checksum_bytes)) + b"\n"
     update = UpdateInfo(
         version="0.3.0",
         title="Preview",
@@ -166,17 +196,60 @@ def test_download_and_verify_update_removes_partial_file_on_hash_failure(tmp_pat
         release_url="https://example.test/release",
         archive=ReleaseAsset(archive_name, "https://example.test/app.zip", len(content)),
         checksum=ReleaseAsset(f"{archive_name}.sha256", "https://example.test/sum", 100),
+        signature=ReleaseAsset(f"{archive_name}.sha256.sig", "https://example.test/sig", 89),
     )
-    checksum = BytesIO(f"{'0' * 64}  {archive_name}\n".encode())
+    checksum = BytesIO(checksum_bytes)
 
     with (
-        patch("urllib.request.urlopen", side_effect=[checksum, BytesIO(content)]),
+        patch(
+            "urllib.request.urlopen",
+            side_effect=[checksum, BytesIO(signature_bytes), BytesIO(content)],
+        ),
         pytest.raises(UpdateCheckError, match="SHA-256"),
     ):
-        download_and_verify_update(update, tmp_path)
+        download_and_verify_update(update, tmp_path, public_key=public_key)
 
     assert not list(tmp_path.rglob("*.part"))
     assert not list(tmp_path.rglob("*.zip"))
+
+
+def test_download_rejects_untrusted_or_tampered_checksum_signature(tmp_path) -> None:
+    archive_name = "FinancialBeancount-windows-X64.zip"
+    content = b"archive"
+    checksum = f"{sha256(content).hexdigest()}  {archive_name}\n".encode()
+    key = Ed25519PrivateKey.generate()
+    public_key = base64.b64encode(key.public_key().public_bytes_raw()).decode()
+    update = UpdateInfo(
+        version="0.3.0",
+        title="Preview",
+        notes="",
+        publisher="ssh555",
+        published_at="",
+        release_url="https://example.test/release",
+        archive=ReleaseAsset(archive_name, "https://example.test/archive", len(content)),
+        checksum=ReleaseAsset(f"{archive_name}.sha256", "https://example.test/sum", 100),
+        signature=ReleaseAsset(f"{archive_name}.sha256.sig", "https://example.test/sig", 89),
+    )
+
+    with (
+        patch(
+            "urllib.request.urlopen",
+            side_effect=[BytesIO(checksum), BytesIO(base64.b64encode(b"x" * 64))],
+        ),
+        pytest.raises(UpdateCheckError, match="签名验证失败"),
+    ):
+        download_and_verify_update(update, tmp_path, public_key=public_key)
+
+    valid_signature = base64.b64encode(key.sign(checksum))
+    with (
+        patch(
+            "urllib.request.urlopen",
+            side_effect=[BytesIO(checksum), BytesIO(valid_signature)],
+        ),
+        patch.dict("os.environ", {}, clear=True),
+        pytest.raises(UpdateCheckError, match="未配置可信更新公钥"),
+    ):
+        download_and_verify_update(update, tmp_path)
 
 
 def test_prepare_update_installation_extracts_valid_application(tmp_path) -> None:
@@ -184,7 +257,9 @@ def test_prepare_update_installation_extracts_valid_application(tmp_path) -> Non
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr("FinancialBeancount/FinancialBeancount.exe", b"executable")
         archive.writestr("FinancialBeancount/_internal/app.txt", b"runtime")
-    staged = StagedUpdate("0.3.0", archive_path, tmp_path / "sum", sha256(b"x").hexdigest())
+    staged = StagedUpdate(
+        "0.3.0", archive_path, tmp_path / "sum", tmp_path / "sig", sha256(b"x").hexdigest()
+    )
 
     prepared = prepare_update_installation(staged)
 
@@ -200,7 +275,7 @@ def test_prepare_update_installation_rejects_path_traversal(tmp_path, member: st
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr(member, b"unsafe")
         archive.writestr("FinancialBeancount/app", b"application")
-    staged = StagedUpdate("0.3.0", archive_path, tmp_path / "sum", "0" * 64)
+    staged = StagedUpdate("0.3.0", archive_path, tmp_path / "sum", tmp_path / "sig", "0" * 64)
 
     with pytest.raises(UpdateCheckError, match="不安全路径"):
         prepare_update_installation(staged)

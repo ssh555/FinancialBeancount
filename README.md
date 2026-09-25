@@ -84,6 +84,14 @@ unsigned Windows, macOS, and Linux ZIP artifacts plus SHA-256 manifests for vali
 also smoke-tests the packaged update helper. Platform signatures and signed installers remain
 release gates, so downloadable releases are intentionally not published yet.
 
+Official update assets use an Ed25519 signature over the exact `.sha256` manifest. The desktop app
+verifies that signature with a public key embedded at build time before it trusts the hash or
+downloads the archive. The desktop workflow's `signed_release` mode requires both the repository
+variable `FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY` (base64 raw 32-byte public key) and the GitHub
+Actions secret `FINANCIAL_BEANCOUNT_RELEASE_SIGNING_KEY` (base64 raw 32-byte private key). The build
+fails if either credential is absent, malformed, or the keys do not match. Private keys must never be
+committed; ordinary development artifacts remain unsigned and are not accepted by the updater.
+
 ### Recoverable Database Upgrades
 
 Existing Schema 8 or 9 ledgers are upgraded transactionally to the current schema. Before any

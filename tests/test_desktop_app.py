@@ -69,6 +69,7 @@ def test_show_update_requires_consent_before_starting_download():
         release_url="https://example.test/release",
         archive=ReleaseAsset("app.zip", "https://example.test/app.zip", 10485760),
         checksum=ReleaseAsset("app.zip.sha256", "https://example.test/sum", 100),
+        signature=ReleaseAsset("app.zip.sha256.sig", "https://example.test/sig", 89),
     )
 
     with patch("beancount_dedup.desktop_app.threading.Thread") as thread:

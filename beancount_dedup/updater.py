@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -16,11 +17,14 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ._release_public_key import BUILTIN_UPDATE_PUBLIC_KEY
+
 DEFAULT_RELEASES_API = "https://api.github.com/repos/ssh555/FinancialBeancount/releases/latest"
 UPDATE_API_ENV = "FINANCIAL_BEANCOUNT_UPDATE_API"
 DISABLED_VALUES = {"0", "disabled", "false", "off", "none"}
 MAX_METADATA_BYTES = 2 * 1024 * 1024
 MAX_CHECKSUM_BYTES = 4096
+MAX_SIGNATURE_BYTES = 4096
 MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024
 DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 10_000
@@ -48,6 +52,7 @@ class UpdateInfo:
     release_url: str
     archive: ReleaseAsset
     checksum: ReleaseAsset
+    signature: ReleaseAsset
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,7 @@ class StagedUpdate:
     version: str
     archive_path: Path
     checksum_path: Path
+    signature_path: Path
     sha256: str
 
 
@@ -155,6 +161,7 @@ def evaluate_release(
     suffix = platform_asset_suffix(system, machine)
     archive_name = f"FinancialBeancount-{suffix}.zip"
     checksum_name = f"{archive_name}.sha256"
+    signature_name = f"{checksum_name}.sig"
     assets = payload.get("assets")
     if not isinstance(assets, list):
         raise UpdateCheckError("更新信息缺少下载文件")
@@ -163,7 +170,7 @@ def evaluate_release(
         for asset in assets
         if isinstance(asset, dict) and isinstance(asset.get("name"), str)
     }
-    if archive_name not in indexed or checksum_name not in indexed:
+    if archive_name not in indexed or checksum_name not in indexed or signature_name not in indexed:
         raise UpdateCheckError(f"此版本没有适用于 {suffix} 的完整更新文件")
 
     author = payload.get("author")
@@ -177,6 +184,7 @@ def evaluate_release(
         release_url=_required_https_url(payload, "html_url"),
         archive=_asset(indexed[archive_name]),
         checksum=_asset(indexed[checksum_name]),
+        signature=_asset(indexed[signature_name]),
     )
 
 
@@ -185,22 +193,28 @@ def download_and_verify_update(
     staging_root: Path,
     *,
     timeout: float = 30.0,
+    public_key: str | bytes | None = None,
 ) -> StagedUpdate:
-    """Download an approved update to staging and verify its published SHA-256."""
+    """Verify the signed checksum, then download and hash the approved update."""
     if update.archive.size <= 0 or update.archive.size > MAX_ARCHIVE_BYTES:
         raise UpdateCheckError("更新文件大小无效或超过安全限制")
     stage_directory = staging_root / update.version
     stage_directory.mkdir(parents=True, exist_ok=True)
     archive_path = stage_directory / update.archive.name
     checksum_path = stage_directory / update.checksum.name
+    signature_path = stage_directory / update.signature.name
     temporary_path = archive_path.with_suffix(f"{archive_path.suffix}.part")
 
-    expected = _download_checksum(update.checksum, timeout)
+    checksum_bytes = _download_small_asset(update.checksum, MAX_CHECKSUM_BYTES, timeout, "校验文件")
+    signature_bytes = _download_small_asset(update.signature, MAX_SIGNATURE_BYTES, timeout, "签名文件")
+    _verify_checksum_signature(checksum_bytes, signature_bytes, public_key)
+    expected = _parse_checksum(checksum_bytes, update.checksum.name)
+    checksum_path.write_bytes(checksum_bytes)
+    signature_path.write_bytes(signature_bytes)
     if archive_path.is_file() and _sha256_file(archive_path) == expected:
-        checksum_path.write_text(
-            f"{expected}  {update.archive.name}\n", encoding="utf-8", newline="\n"
+        return StagedUpdate(
+            update.version, archive_path, checksum_path, signature_path, expected
         )
-        return StagedUpdate(update.version, archive_path, checksum_path, expected)
 
     digest = hashlib.sha256()
     received = 0
@@ -221,14 +235,11 @@ def download_and_verify_update(
         if actual != expected:
             raise UpdateCheckError("更新文件 SHA-256 校验失败")
         temporary_path.replace(archive_path)
-        checksum_path.write_text(
-            f"{expected}  {update.archive.name}\n", encoding="utf-8", newline="\n"
-        )
     except (OSError, urllib.error.HTTPError) as exc:
         raise UpdateCheckError(f"无法下载更新文件：{exc}") from exc
     finally:
         temporary_path.unlink(missing_ok=True)
-    return StagedUpdate(update.version, archive_path, checksum_path, expected)
+    return StagedUpdate(update.version, archive_path, checksum_path, signature_path, expected)
 
 
 def prepare_update_installation(staged: StagedUpdate) -> PreparedUpdate:
@@ -301,24 +312,53 @@ def _remove_scoped_directory(path: Path, parent: Path) -> None:
         shutil.rmtree(resolved)
 
 
-def _download_checksum(asset: ReleaseAsset, timeout: float) -> str:
+def _download_small_asset(
+    asset: ReleaseAsset, maximum: int, timeout: float, label: str
+) -> bytes:
     try:
         with urllib.request.urlopen(_asset_request(asset.download_url), timeout=timeout) as response:
-            raw_value = bytes(response.read(MAX_CHECKSUM_BYTES + 1))
+            raw_value = bytes(response.read(maximum + 1))
     except (OSError, urllib.error.HTTPError) as exc:
-        raise UpdateCheckError(f"无法下载更新校验文件：{exc}") from exc
-    if len(raw_value) > MAX_CHECKSUM_BYTES:
-        raise UpdateCheckError("更新校验文件超过安全大小限制")
+        raise UpdateCheckError(f"无法下载更新{label}：{exc}") from exc
+    if len(raw_value) > maximum:
+        raise UpdateCheckError(f"更新{label}超过安全大小限制")
+    return raw_value
+
+
+def _parse_checksum(raw_value: bytes, checksum_name: str) -> str:
     try:
         fields = raw_value.decode("utf-8").strip().split()
     except UnicodeError as exc:
         raise UpdateCheckError("更新校验文件编码无效") from exc
-    if len(fields) != 2 or fields[1].lstrip("*") != asset.name.removesuffix(".sha256"):
+    if len(fields) != 2 or fields[1].lstrip("*") != checksum_name.removesuffix(".sha256"):
         raise UpdateCheckError("更新校验文件格式或文件名不匹配")
     digest = fields[0].lower()
     if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
         raise UpdateCheckError("更新校验文件中的 SHA-256 无效")
     return digest
+
+
+def _verify_checksum_signature(
+    checksum: bytes, encoded_signature: bytes, public_key: str | bytes | None
+) -> None:
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    configured = (
+        public_key
+        or BUILTIN_UPDATE_PUBLIC_KEY
+        or os.environ.get("FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY", "")
+    )
+    if not configured:
+        raise UpdateCheckError("应用未配置可信更新公钥，拒绝安装更新")
+    try:
+        key_bytes = base64.b64decode(configured, validate=True)
+        signature = base64.b64decode(encoded_signature.strip(), validate=True)
+        if len(key_bytes) != 32 or len(signature) != 64:
+            raise ValueError
+        Ed25519PublicKey.from_public_bytes(key_bytes).verify(signature, checksum)
+    except (ValueError, InvalidSignature) as exc:
+        raise UpdateCheckError("更新签名验证失败，无法确认发布者身份") from exc
 
 
 def _asset_request(url: str) -> urllib.request.Request:

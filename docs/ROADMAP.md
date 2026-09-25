@@ -46,6 +46,10 @@ review, and end-to-end tests are complete.
 - The default GitHub API source can be disabled or replaced by an HTTPS endpoint through
   `FINANCIAL_BEANCOUNT_UPDATE_API`.
 - CI produces version-ready platform/architecture ZIP assets and adjacent SHA-256 manifests.
+- Signed-release CI creates an Ed25519 signature for each exact SHA-256 manifest from a GitHub
+  Actions secret. The application embeds only the corresponding public key and rejects missing,
+  malformed, tampered, or mismatched signatures before downloading an archive. Unsigned development
+  artifacts cannot enter the automatic update path.
 - Approved downloads stream into a per-user staging directory, enforce declared and maximum sizes,
   verify the published SHA-256, and reject unsafe ZIP paths, symbolic links, and decompression bombs.
 - A separately packaged helper waits for the running application to exit, retains the previous
@@ -60,5 +64,5 @@ review, and end-to-end tests are complete.
   narrow persistence contract, so a new provider or statement version does not require a database
   or ledger-core change. Built-in parsing flows are registered outside the core importer.
 
-Platform signature verification, permission/elevation UX, signed installers, and upgrade testing
+Operating-system code-signing verification, permission/elevation UX, signed installers, and upgrade testing
 from every published version remain future release batches.

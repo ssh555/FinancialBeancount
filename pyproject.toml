@@ -32,6 +32,9 @@ classifiers = [
     "Topic :: Office/Business :: Financial",
     "Topic :: Utilities",
 ]
+dependencies = [
+    "cryptography>=41.0",
+]
 
 [project.optional-dependencies]
 xlsx = [
