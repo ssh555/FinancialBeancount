@@ -159,6 +159,28 @@ class ImportReviewService:
         ).fetchall()
         return [self._session_from_row(row) for row in rows]
 
+    def confirm_unmatched_without_candidates(self, actor: str) -> int:
+        """Bulk-confirm only raws that have no pending cross-platform match candidate."""
+
+        rows = self.store.connection.execute(
+            """
+            SELECT items.review_item_id
+            FROM review_items AS items
+            WHERE items.status = 'pending'
+              AND items.item_type IN ('new_unmatched', 'existing_unmatched')
+              AND NOT EXISTS (
+                  SELECT 1 FROM match_candidates AS candidates
+                  WHERE candidates.status = 'pending'
+                    AND (candidates.left_raw_id = items.raw_id
+                         OR candidates.right_raw_id = items.raw_id)
+              )
+            ORDER BY items.created_at, items.review_item_id
+            """
+        ).fetchall()
+        for row in rows:
+            self.decide(row["review_item_id"], "confirmed", actor)
+        return len(rows)
+
     def get_session(self, session_id: str) -> ReviewSession:
         row = self.store.connection.execute(
             "SELECT * FROM review_sessions WHERE session_id = ?", (session_id,)

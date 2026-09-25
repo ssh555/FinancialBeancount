@@ -11,6 +11,40 @@ artifacts only; a successful workflow run is not permission to publish them.
 - recoverable database migrations and a Windows/macOS/Linux upgrade matrix;
 - privacy and offline-boundary tests.
 
+The desktop workflow runs the fail-closed preview gate before uploading development artifacts. It
+checks version consistency, required release documentation, the expected platform archive and its
+exact SHA-256 manifest. The stricter publication gate additionally verifies the Ed25519 manifest
+signature, a native installer and hash-bound evidence that the operating system signature was
+successfully verified:
+
+```bash
+python scripts/release_gate.py --repository . --artifacts artifacts \
+  --mode preview --platform windows --architecture X64
+```
+
+`--mode release` is intentionally not enabled in the workflow yet: it must fail until the native
+installer and platform-signature stages described below exist.
+
+## Complete private-ledger acceptance
+
+Before a release candidate is approved, maintainers can import the complete private statement set,
+promote only records that have no generated cross-source match candidate, export one portable file,
+and restore that file into a fresh database for a table-by-table comparison:
+
+```bash
+python scripts/acceptance_full_ledger.py \
+  --bills /path/to/private/statements \
+  --output /path/to/new-empty-output-directory
+```
+
+The statement directory and generated databases/archive must remain outside Git (the repository's
+`tmp/` directory is ignored and is suitable for local runs). Extracted supported statements are
+processed independently; sibling ZIP originals are reported as skipped so they are not imported
+twice. Unsupported or malformed content is named as unprocessed and prevents export. Ambiguous
+match candidates remain pending for explicit review. A successful run emits
+`complete-ledger.financial-beancount.zip` plus `acceptance-report.json`, then proves that the archive
+can initialize the mobile ledger without loss.
+
 ## External credentials still required
 
 These credentials must be obtained from their platform owners and stored only as protected GitHub

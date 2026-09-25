@@ -117,6 +117,13 @@ required are recorded in [`docs/RELEASE.md`](docs/RELEASE.md). Until those platf
 installers are implemented and verified, workflow artifacts remain development previews rather than
 public Releases.
 
+Release-candidate acceptance can also run against the maintainer's complete private statement set.
+The acceptance command imports every supported extracted statement independently, reports skipped
+or unprocessed files, keeps ambiguous matches for review, exports one portable ledger archive, and
+restores it into a clean database to compare every table. This provides a single file for initializing
+the mobile installation without committing bills or generated ledger data; see
+[`docs/RELEASE.md`](docs/RELEASE.md#complete-private-ledger-acceptance).
+
 ### Recoverable Database Upgrades
 
 Existing Schema 8 or 9 ledgers are upgraded transactionally to the current schema. Before any

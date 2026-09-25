@@ -63,6 +63,15 @@ jobs:
           --source dist/FinancialBeancount
           --output artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.zip
           --require-signature
+      - name: Verify preview artifact gate
+        if: ${{ !inputs.signed_release }}
+        run: >-
+          python scripts/release_gate.py
+          --repository .
+          --artifacts artifacts
+          --mode preview
+          --platform ${{ matrix.platform }}
+          --architecture ${{ runner.arch }}
       - uses: actions/upload-artifact@v4
         with:
           name: FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}
