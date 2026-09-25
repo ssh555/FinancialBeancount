@@ -47,8 +47,18 @@ jobs:
           print(matches[0])
       - name: Verify packaged update helper
         run: python scripts/smoke_update_helper.py
-      - name: Build Windows MSI preview
-        if: ${{ matrix.platform == 'windows' && !inputs.signed_release }}
+      - name: Sign Windows application binaries
+        if: ${{ matrix.platform == 'windows' && inputs.signed_release }}
+        shell: pwsh
+        env:
+          FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE: ${{ secrets.FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE }}
+          FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD }}
+        run: >-
+          ./installer/windows/sign.ps1
+          -Path dist/FinancialBeancount/FinancialBeancount.exe,dist/FinancialBeancount/FinancialBeancountUpdater.exe
+          -TimestampUrl "${{ vars.FINANCIAL_BEANCOUNT_WINDOWS_TIMESTAMP_URL }}"
+      - name: Build Windows MSI
+        if: ${{ matrix.platform == 'windows' }}
         shell: pwsh
         run: |
           $version = python -c "import beancount_dedup; print(beancount_dedup.__version__)"
@@ -63,6 +73,23 @@ jobs:
           ./installer/windows/smoke_upgrade.ps1
           -Source dist/FinancialBeancount
           -CurrentMsi artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.msi
+      - name: Sign Windows MSI
+        if: ${{ matrix.platform == 'windows' && inputs.signed_release }}
+        shell: pwsh
+        env:
+          FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE: ${{ secrets.FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE }}
+          FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD }}
+        run: >-
+          ./installer/windows/sign.ps1
+          -Path artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.msi
+          -TimestampUrl "${{ vars.FINANCIAL_BEANCOUNT_WINDOWS_TIMESTAMP_URL }}"
+      - name: Record Windows native signature evidence
+        if: ${{ matrix.platform == 'windows' && inputs.signed_release }}
+        run: >-
+          python scripts/verify_platform_signature.py
+          --platform windows
+          --installer artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.msi
+          --expected-identity "${{ vars.FINANCIAL_BEANCOUNT_WINDOWS_PUBLISHER }}"
       - name: Package development asset and checksum
         if: ${{ !inputs.signed_release }}
         run: >-
@@ -86,6 +113,15 @@ jobs:
           --repository .
           --artifacts artifacts
           --mode preview
+          --platform ${{ matrix.platform }}
+          --architecture ${{ runner.arch }}
+      - name: Verify signed Windows release gate
+        if: ${{ matrix.platform == 'windows' && inputs.signed_release }}
+        run: >-
+          python scripts/release_gate.py
+          --repository .
+          --artifacts artifacts
+          --mode release
           --platform ${{ matrix.platform }}
           --architecture ${{ runner.arch }}
       - uses: actions/upload-artifact@v4

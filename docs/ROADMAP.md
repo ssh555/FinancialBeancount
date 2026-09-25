@@ -84,6 +84,10 @@ review, and end-to-end tests are complete.
   proves that the separately stored per-user ledger sentinel survives both operations. The MSI stays
   a preview until its application binaries, updater and installer receive trusted Authenticode
   signatures and verification evidence.
+- The signed Windows workflow consumes a protected PKCS#12 certificate, signs and RFC 3161
+  timestamps the main executable, updater and MSI, immediately verifies each Authenticode chain,
+  pins the expected publisher in hash-bound evidence, and runs the strict Windows publication gate.
+  No test certificate or unsigned fallback is accepted when signed mode is requested.
 
-Signing credential provisioning, macOS/Linux native installer construction and installer upgrades
+Windows credential provisioning, macOS/Linux native installer construction and installer upgrades
 from every published version remain future release batches.

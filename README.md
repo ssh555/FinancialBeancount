@@ -117,6 +117,12 @@ required are recorded in [`docs/RELEASE.md`](docs/RELEASE.md). Until those platf
 installers are implemented and verified, workflow artifacts remain development previews rather than
 public Releases.
 
+The signed Windows workflow has a fail-closed Authenticode path for the main application, updater
+helper and MSI, including RFC 3161 timestamps, trusted-chain verification and expected-publisher
+pinning. It becomes usable only after protected certificate credentials and repository variables are
+provisioned; it has no unsigned fallback. macOS and Linux native distribution signing remain release
+blockers.
+
 Release-candidate acceptance can also run against the maintainer's complete private statement set.
 The acceptance command imports every supported extracted statement independently, reports skipped
 or unprocessed files, keeps ambiguous matches for review, exports one portable ledger archive, and

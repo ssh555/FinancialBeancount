@@ -22,8 +22,8 @@ python scripts/release_gate.py --repository . --artifacts artifacts \
   --mode preview --platform windows --architecture X64
 ```
 
-`--mode release` is intentionally not enabled in the workflow yet: it must fail until the native
-installer and platform-signature stages described below exist.
+`--mode release` is enabled only for the signed Windows job. macOS and Linux remain intentionally
+outside that gate until their native installer and platform-signature stages described below exist.
 
 Platform verification evidence must be generated on the matching clean runner after signing. The
 verifier pins the expected publisher or key fingerprint, rejects a non-zero native-tool result, and
@@ -92,13 +92,25 @@ removing per-user data, and pass the release-upgrade and privacy gates. The CI j
 credentials are missing, signatures are invalid, notarization fails or the installer requires an
 uninstall/reinstall cycle.
 
-The following existing GitHub configuration is only for the cross-platform Ed25519 update manifest:
+The cross-platform Ed25519 update manifest uses:
 
 - repository variable `FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY`;
 - Actions secret `FINANCIAL_BEANCOUNT_RELEASE_SIGNING_KEY`.
 
-Platform certificate secret names will be added together with their installer implementation, so no
-unused long-lived certificate material needs to be provisioned early.
+The signed Windows job additionally requires:
+
+- Actions secret `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE`: base64 PKCS#12 code-signing certificate;
+- Actions secret `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD`;
+- repository variable `FINANCIAL_BEANCOUNT_WINDOWS_TIMESTAMP_URL`: HTTPS RFC 3161 timestamp service;
+- repository variable `FINANCIAL_BEANCOUNT_WINDOWS_PUBLISHER`: publisher text expected in trusted
+  Authenticode verification output.
+
+The workflow signs and immediately verifies `FinancialBeancount.exe` and
+`FinancialBeancountUpdater.exe` before packaging, then signs the MSI, records native verification
+evidence and runs the strict Windows Release gate. The temporary PKCS#12 file is deleted even on
+failure. Missing credentials, malformed base64, signing failure, timestamp failure, untrusted chains
+or publisher mismatch stop the job. GitHub-hosted runners are ephemeral, but organization policy
+should still restrict these secrets to protected environments and approved release operators.
 
 ## Windows MSI preview
 
@@ -112,5 +124,7 @@ removal.
 The Windows CI job installs a generated `0.0.1` package, creates a user-data sentinel, upgrades in
 place to the current package, and uninstalls it. It fails unless application files follow the
 expected lifecycle while the sentinel survives both upgrade and uninstall. These MSI files remain
-preview artifacts: official Release mode still requires Authenticode signing and the native
-verification evidence described above.
+preview artifacts. With the protected configuration above, signed mode Authenticode-signs the
+application, updater and MSI and must pass the strict native verification gate; this makes the
+Windows artifact eligible for release review, but does not remove the macOS/Linux publication
+blockers.

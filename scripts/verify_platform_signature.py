@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -33,7 +34,7 @@ def verify_installer(
         raise ValueError("expected signing identity is required")
     execute = runner or _run
     if platform_name == "windows":
-        command = ["signtool", "verify", "/pa", "/tw", "/v", str(installer)]
+        command = [_windows_signtool(), "verify", "/pa", "/tw", "/v", str(installer)]
         output = _successful_output(execute, command)
         if identity.casefold() not in output.casefold():
             raise ValueError("verified Windows signature does not match the expected publisher")
@@ -97,6 +98,15 @@ def _successful_output(runner: Runner, command: Sequence[str]) -> str:
 
 def _run(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, capture_output=True, text=True, check=False)
+
+
+def _windows_signtool() -> str:
+    available = shutil.which("signtool") or shutil.which("signtool.exe")
+    if available:
+        return available
+    kits = Path("C:/Program Files (x86)/Windows Kits/10/bin")
+    candidates = sorted(kits.glob("*/x64/signtool.exe"), reverse=True)
+    return str(candidates[0]) if candidates else "signtool"
 
 
 def main(argv: list[str] | None = None) -> int:
