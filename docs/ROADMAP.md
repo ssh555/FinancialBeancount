@@ -1,5 +1,7 @@
 # FinancialBeancount Roadmap
 
+[English](ROADMAP.md) | [简体中文](ROADMAP.zh-CN.md)
+
 This roadmap records release gates that must not be lost while implementation proceeds in small,
 auditable stages. It does not imply that a release should be created early.
 

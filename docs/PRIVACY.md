@@ -1,5 +1,7 @@
 # Privacy and Network Boundary
 
+[English](PRIVACY.md) | [简体中文](PRIVACY.zh-CN.md)
+
 FinancialBeancount is a local-first ledger. Statement files, normalized transactions, original rows,
 review history, statistics, backups and exports stay on the user's device unless the user explicitly
 copies or shares an exported file.

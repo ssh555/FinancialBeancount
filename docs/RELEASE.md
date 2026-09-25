@@ -1,5 +1,7 @@
 # Release Gate and External Credentials
 
+[English](RELEASE.md) | [简体中文](RELEASE.zh-CN.md)
+
 The repository does not currently publish GitHub Releases. The desktop workflow produces reviewable
 artifacts only; a successful workflow run is not permission to publish them.
 

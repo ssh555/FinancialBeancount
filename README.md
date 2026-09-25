@@ -1,5 +1,7 @@
 # Beancount Multi-Platform Bill Deduplicator
 
+[English](#beancount-multi-platform-bill-deduplicator) | [简体中文](#beancount-多平台账单去重工具)
+
 > A Beancount-based double-entry accounting tool for deduplicating and converting bills from Alipay, WeChat Pay, and bank cards.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/CacinieP/FinancialBeancount/ci.yml?branch=main&style=flat-square)](https://github.com/CacinieP/FinancialBeancount/actions)
@@ -323,6 +325,8 @@ This tool is provided for educational and personal finance management purposes. 
 ---
 
 # Beancount 多平台账单去重工具
+
+[简体中文](#beancount-多平台账单去重工具) | [English](#beancount-multi-platform-bill-deduplicator)
 
 > 基于 Beancount 复式记账规范的多平台账单去重工具，支持支付宝、微信、银行卡账单的去重与格式转换。
 
