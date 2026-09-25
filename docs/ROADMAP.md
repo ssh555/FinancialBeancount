@@ -56,6 +56,10 @@ review, and end-to-end tests are complete.
   binaries, swaps the prepared application in place, and starts it. The replacement must report
   local-server readiness through a one-time health marker; otherwise the helper restores the old
   version. CI exercises the packaged helper against disposable directories.
+- The controller probes installation and parent-directory permissions before exit. Protected Windows
+  installs can use an explicit UAC prompt; refusal or launch failure keeps the current process and
+  ledger untouched, while other platforms receive a verified manual-replacement path. A late helper
+  failure restores/restarts the retained application and writes a local diagnostic.
 - Schema upgrades from every historical ledger schema (8 and 9) create and validate a checksummed
   backup before writes, run inside one transaction, preserve a migration audit record, and retain
   the original schema on failure. Desktop and CLI recovery paths require explicit confirmation.
@@ -64,5 +68,5 @@ review, and end-to-end tests are complete.
   narrow persistence contract, so a new provider or statement version does not require a database
   or ledger-core change. Built-in parsing flows are registered outside the core importer.
 
-Operating-system code-signing verification, permission/elevation UX, signed installers, and upgrade testing
+Operating-system code-signing verification, signed installers, and upgrade testing
 from every published version remain future release batches.

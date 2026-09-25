@@ -17,6 +17,7 @@ from . import __version__
 from .backup import BackupError, restore_backup
 from .ledger_store import LedgerMigrationError
 from .mobile_api import serve_mobile_api
+from .update_helper import verify_installation_permissions
 from .updater import (
     PreparedUpdate,
     UpdateCheckError,
@@ -248,6 +249,22 @@ class DesktopController:
                 f"安装计划：{staged.plan_path}",
             )
             return
+        installation_directory = Path(sys.executable).resolve().parent
+        try:
+            verify_installation_permissions(installation_directory)
+        except UpdateCheckError as exc:
+            if sys.platform == "win32" and self._messagebox.askyesno(
+                "需要管理员权限",
+                f"{exc}\n\n是否通过 Windows 用户账户控制启动更新助手？\n"
+                "拒绝授权不会退出程序，也不会修改账本。",
+            ):
+                try:
+                    self._launch_update_helper(staged, elevated=True)
+                except UpdateCheckError as launch_error:
+                    self._show_manual_update(staged, launch_error)
+            else:
+                self._show_manual_update(staged, exc)
+            return
         if not self._messagebox.askyesno(
             "准备安装更新",
             f"版本 {staged.version} 已通过 SHA-256 校验。\n\n"
@@ -260,7 +277,15 @@ class DesktopController:
         except UpdateCheckError as exc:
             self._messagebox.showerror("无法安装更新", str(exc))
 
-    def _launch_update_helper(self, staged: PreparedUpdate) -> None:
+    def _show_manual_update(self, staged: PreparedUpdate, error: Exception) -> None:
+        self._messagebox.showwarning(
+            "请手动安装更新",
+            f"无法自动替换当前程序：{error}\n\n"
+            "当前程序和账本均未修改。请退出程序后，将以下目录中的应用文件复制到安装目录：\n"
+            f"{staged.application_directory}",
+        )
+
+    def _launch_update_helper(self, staged: PreparedUpdate, *, elevated: bool = False) -> None:
         suffix = ".exe" if sys.platform == "win32" else ""
         helper_name = f"FinancialBeancountUpdater{suffix}"
         installation_directory = Path(sys.executable).resolve().parent
@@ -270,20 +295,33 @@ class DesktopController:
         staged_helper = staged.plan_path.parent / helper_name
         try:
             shutil.copy2(bundled_helper, staged_helper)
-            subprocess.Popen(
-                [
+            arguments = [
+                "--plan",
+                str(staged.plan_path),
+                "--install-dir",
+                str(installation_directory),
+                "--launcher",
+                Path(sys.executable).name,
+                "--wait-pid",
+                str(os.getpid()),
+            ]
+            if elevated:
+                if sys.platform != "win32":
+                    raise UpdateCheckError("当前平台不支持自动提权，请手动安装更新")
+                import ctypes
+
+                result = ctypes.windll.shell32.ShellExecuteW(
+                    None,
+                    "runas",
                     str(staged_helper),
-                    "--plan",
-                    str(staged.plan_path),
-                    "--install-dir",
-                    str(installation_directory),
-                    "--launcher",
-                    Path(sys.executable).name,
-                    "--wait-pid",
-                    str(os.getpid()),
-                ],
-                close_fds=True,
-            )
+                    subprocess.list2cmdline(arguments),
+                    str(staged.plan_path.parent),
+                    0,
+                )
+                if result <= 32:
+                    raise UpdateCheckError("管理员授权被拒绝或无法启动提权更新助手")
+            else:
+                subprocess.Popen([str(staged_helper), *arguments], close_fds=True)
         except OSError as exc:
             raise UpdateCheckError(f"无法启动更新助手：{exc}") from exc
         self.close()

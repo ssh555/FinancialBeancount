@@ -92,6 +92,14 @@ Actions secret `FINANCIAL_BEANCOUNT_RELEASE_SIGNING_KEY` (base64 raw 32-byte pri
 fails if either credential is absent, malformed, or the keys do not match. Private keys must never be
 committed; ordinary development artifacts remain unsigned and are not accepted by the updater.
 
+Before exiting for an in-place update, the desktop controller probes both the installation directory
+and its parent. Writable installations continue normally. On Windows, a protected installation can
+launch the already-staged helper through the standard UAC prompt; declining UAC leaves the running
+application untouched. Other permission failures show the verified unpacked directory and explicit
+manual replacement instructions. The ledger database remains in its per-user data directory and is
+never part of the binary swap. If a late helper failure occurs after exit, the retained application is
+started again and the diagnostic remains in `install-error.log`.
+
 ### Recoverable Database Upgrades
 
 Existing Schema 8 or 9 ledgers are upgraded transactionally to the current schema. Before any

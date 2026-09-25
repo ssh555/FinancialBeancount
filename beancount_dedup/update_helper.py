@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,30 @@ class AppliedUpdate:
     installation_directory: Path
     backup_directory: Path
     launcher: Path
+
+
+def verify_installation_permissions(installation_directory: Path) -> None:
+    """Probe the exact directories needed for an in-place swap without changing the install."""
+
+    target = installation_directory.resolve()
+    if not target.is_dir():
+        raise UpdateCheckError("当前安装目录不存在")
+    probes = (target, target.parent)
+    created: list[Path] = []
+    try:
+        for directory in probes:
+            probe = directory / f".financial-beancount-write-test-{os.getpid()}"
+            with probe.open("xb") as stream:
+                stream.write(b"permission-test")
+            created.append(probe)
+    except OSError as exc:
+        raise UpdateCheckError(
+            "当前用户无权修改应用安装目录；可使用管理员权限安装，或手动替换程序文件"
+        ) from exc
+    finally:
+        for probe in created:
+            with suppress(OSError):
+                probe.unlink(missing_ok=True)
 
 
 def rollback_applied_update(applied: AppliedUpdate) -> None:
@@ -105,6 +130,7 @@ def apply_prepared_application(
         raise UpdateCheckError("更新源目录与安装目录不能互相包含")
     if pending.exists():
         raise UpdateCheckError(f"检测到未完成的更新目录：{pending}")
+    verify_installation_permissions(target)
 
     try:
         if backup.exists():
@@ -154,12 +180,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--launcher", type=Path, required=True)
     parser.add_argument("--wait-pid", type=int, required=True)
     args = parser.parse_args(argv)
+    old_application_exited = False
     try:
         plan = load_install_plan(args.plan)
         source = plan.get("application_directory")
         if not isinstance(source, str):
             raise UpdateCheckError("安装计划缺少应用目录")
         wait_for_process_exit(args.wait_pid)
+        old_application_exited = True
         applied = apply_prepared_application(
             Path(source), args.install_dir, launcher_relative=args.launcher
         )
@@ -177,6 +205,11 @@ def main(argv: list[str] | None = None) -> int:
     except UpdateCheckError as exc:
         error_path = args.plan.with_name("install-error.log")
         error_path.write_text(str(exc), encoding="utf-8")
+        if old_application_exited:
+            launcher = args.install_dir / args.launcher
+            if launcher.is_file():
+                with suppress(OSError):
+                    subprocess.Popen([str(launcher)], close_fds=True)
         return 1
     return 0
 
