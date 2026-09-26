@@ -25,7 +25,10 @@ def package_directory(
         raise ValueError("release archive must use the .zip extension")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    files = sorted(path for path in source.rglob("*") if path.is_file())
+    files = sorted(
+        (path for path in source.rglob("*") if path.is_file()),
+        key=lambda path: path.relative_to(source).as_posix().casefold(),
+    )
     if not files:
         raise ValueError(f"desktop build directory is empty: {source}")
 

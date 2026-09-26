@@ -33,13 +33,16 @@ def test_backup_cli_requires_explicit_overwrite(tmp_path, capsys) -> None:
     error = json.loads(capsys.readouterr().err)
     assert error["error"]["code"] == "backup_error"
 
-    assert main(
-        [
-            "restore",
-            "--backup",
-            str(backup),
-            "--database",
-            str(database),
-            "--overwrite",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "restore",
+                "--backup",
+                str(backup),
+                "--database",
+                str(database),
+                "--overwrite",
+            ]
+        )
+        == 0
+    )

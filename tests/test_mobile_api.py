@@ -86,9 +86,7 @@ def test_cli_can_request_browser_launch(monkeypatch):
         received.update({"database_path": database_path, **options})
 
     monkeypatch.setattr(mobile_api_module, "serve_mobile_api", fake_serve)
-    mobile_api_module.main(
-        ["--database", "test.sqlite3", "--port", "9000", "--open-browser"]
-    )
+    mobile_api_module.main(["--database", "test.sqlite3", "--port", "9000", "--open-browser"])
 
     assert received["database_path"] == "test.sqlite3"
     assert received["port"] == 9000

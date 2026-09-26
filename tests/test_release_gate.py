@@ -30,9 +30,7 @@ def _archive(artifacts: Path) -> Path:
     archive = artifacts / "FinancialBeancount-windows-X64.zip"
     archive.write_bytes(b"desktop")
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    archive.with_suffix(".zip.sha256").write_text(
-        f"{digest}  {archive.name}\n", encoding="utf-8"
-    )
+    archive.with_suffix(".zip.sha256").write_text(f"{digest}  {archive.name}\n", encoding="utf-8")
     return archive
 
 
@@ -127,4 +125,6 @@ def test_release_gate_rejects_legacy_self_reported_signature_evidence(tmp_path: 
         repository, artifacts, mode="release", platform_name="windows", architecture="X64"
     )
 
-    assert next(check for check in checks if check.name == "os-signature-verification").passed is False
+    assert (
+        next(check for check in checks if check.name == "os-signature-verification").passed is False
+    )

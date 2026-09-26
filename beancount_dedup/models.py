@@ -115,7 +115,7 @@ class Transaction:
 
     def __post_init__(self):
         """初始化后处理"""
-        if isinstance(self.amount, (int, float, str)):
+        if isinstance(self.amount, int | float | str):
             self.amount = Decimal(str(self.amount))
         if isinstance(self.platform, str):
             self.platform = Platform(self.platform)

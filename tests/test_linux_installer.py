@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -12,7 +11,7 @@ def test_linux_appimage_metadata_and_lifecycle_are_defined() -> None:
     assert "Exec=FinancialBeancount" in desktop
     assert "Categories=Office;Finance;" in desktop
     assert "usr/lib/financial-beancount" in build
-    assert "ARCH=\"$appimage_arch\"" in build
+    assert 'ARCH="$appimage_arch"' in build
     assert "--appimage-extract" in smoke
     assert "ledger-must-survive" in smoke
     assert "mv -f" in smoke

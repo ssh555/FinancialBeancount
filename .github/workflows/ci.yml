@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dev dependencies
-        run: pip install ruff mypy
+        run: pip install ruff==0.11.8 mypy
       - name: Ruff lint
         run: ruff check beancount_dedup/ tests/
       - name: Ruff format check

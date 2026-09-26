@@ -80,7 +80,9 @@ def test_wait_for_missing_process_returns_without_side_effects() -> None:
     wait_for_process_exit(2_147_483_647, timeout=0.01)
 
 
-def test_permission_preflight_reports_manual_install_without_mutating_target(tmp_path: Path) -> None:
+def test_permission_preflight_reports_manual_install_without_mutating_target(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / "installed"
     target.mkdir()
     (target / "app").write_text("unchanged", encoding="utf-8")
@@ -89,7 +91,9 @@ def test_permission_preflight_reports_manual_install_without_mutating_target(tmp
         pytest.MonkeyPatch.context() as monkeypatch,
         pytest.raises(UpdateCheckError, match="手动替换"),
     ):
-        monkeypatch.setattr(Path, "open", lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError()))
+        monkeypatch.setattr(
+            Path, "open", lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError())
+        )
         verify_installation_permissions(target)
 
     assert (target / "app").read_text(encoding="utf-8") == "unchanged"
@@ -102,9 +106,7 @@ def test_late_helper_failure_restarts_retained_application(tmp_path: Path) -> No
     launcher = install / "app.exe"
     launcher.write_bytes(b"old")
     plan = tmp_path / "install-plan.json"
-    plan.write_text(
-        '{"format_version": 1, "application_directory": "staged"}', encoding="utf-8"
-    )
+    plan.write_text('{"format_version": 1, "application_directory": "staged"}', encoding="utf-8")
 
     with (
         patch("beancount_dedup.update_helper.wait_for_process_exit"),

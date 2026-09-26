@@ -183,9 +183,13 @@ class LedgerStore:
 
         database_path = Path(self.path)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        destination = database_path.parent / "backups" / (
-            f"{database_path.stem}.pre-migration-v{existing_version}-to-v{SCHEMA_VERSION}-"
-            f"{timestamp}.financial-beancount.zip"
+        destination = (
+            database_path.parent
+            / "backups"
+            / (
+                f"{database_path.stem}.pre-migration-v{existing_version}-to-v{SCHEMA_VERSION}-"
+                f"{timestamp}.financial-beancount.zip"
+            )
         )
         manifest = export_backup(self, destination)
         inspected = inspect_backup(destination)
@@ -1114,7 +1118,13 @@ class LedgerStore:
                 (canonical_id, actor, reason, now.isoformat()),
             )
             self._insert_canonical_event(
-                connection, canonical_id, "deleted", before, {"deleted": True, "reason": reason}, actor, now
+                connection,
+                canonical_id,
+                "deleted",
+                before,
+                {"deleted": True, "reason": reason},
+                actor,
+                now,
             )
 
     def restore_canonical(self, canonical_id: str, actor: str) -> None:
@@ -1172,7 +1182,7 @@ class LedgerStore:
         ]
 
     @staticmethod
-    def _insert_canonical_event(  # noqa: PLR0917
+    def _insert_canonical_event(
         connection: sqlite3.Connection,
         canonical_id: str,
         action: str,

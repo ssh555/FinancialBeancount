@@ -58,9 +58,12 @@ def release_payload(version: str = "v0.3.0") -> dict:
 def test_update_source_defaults_can_be_overridden_or_disabled() -> None:
     assert configured_releases_api({}) == DEFAULT_RELEASES_API
     assert configured_releases_api({"FINANCIAL_BEANCOUNT_UPDATE_API": "off"}) is None
-    assert configured_releases_api(
-        {"FINANCIAL_BEANCOUNT_UPDATE_API": "https://updates.example.test/latest"}
-    ) == "https://updates.example.test/latest"
+    assert (
+        configured_releases_api(
+            {"FINANCIAL_BEANCOUNT_UPDATE_API": "https://updates.example.test/latest"}
+        )
+        == "https://updates.example.test/latest"
+    )
     with pytest.raises(UpdateCheckError, match="HTTPS"):
         configured_releases_api({"FINANCIAL_BEANCOUNT_UPDATE_API": "http://unsafe.test"})
 
@@ -155,9 +158,7 @@ def test_download_and_verify_update_stages_matching_archive(tmp_path) -> None:
         published_at="2026-09-22T00:00:00Z",
         release_url="https://example.test/release",
         archive=ReleaseAsset(archive_name, "https://example.test/app.zip", len(content)),
-        checksum=ReleaseAsset(
-            f"{archive_name}.sha256", "https://example.test/app.zip.sha256", 100
-        ),
+        checksum=ReleaseAsset(f"{archive_name}.sha256", "https://example.test/app.zip.sha256", 100),
         signature=ReleaseAsset(
             f"{archive_name}.sha256.sig", "https://example.test/app.zip.sha256.sig", 89
         ),

@@ -51,9 +51,7 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
     except (BackupError, FileExistsError, OSError) as exc:
-        _write_json(
-            {"error": {"code": "backup_error", "message": str(exc)}}, stream=sys.stderr
-        )
+        _write_json({"error": {"code": "backup_error", "message": str(exc)}}, stream=sys.stderr)
         return 2
     return 0
 

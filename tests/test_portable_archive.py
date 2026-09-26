@@ -75,7 +75,9 @@ def test_portable_archive_round_trip_preserves_raw_canonical_and_audit(tmp_path)
         assert canonical is not None
         assert canonical.source_count == 1
         assert restored.is_canonical_deleted(canonical.canonical_id)
-        assert [event["action"] for event in restored.list_canonical_events(canonical.canonical_id)] == [
+        assert [
+            event["action"] for event in restored.list_canonical_events(canonical.canonical_id)
+        ] == [
             "updated",
             "deleted",
         ]

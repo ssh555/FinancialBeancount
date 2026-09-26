@@ -11,9 +11,7 @@ from beancount_dedup.updater import PreparedUpdate, ReleaseAsset, UpdateCheckErr
 
 
 def test_windows_data_directory_uses_local_app_data():
-    result = application_data_directory(
-        "win32", {"LOCALAPPDATA": r"C:\Users\tester\AppData\Local"}
-    )
+    result = application_data_directory("win32", {"LOCALAPPDATA": r"C:\Users\tester\AppData\Local"})
 
     assert result == Path(r"C:\Users\tester\AppData\Local") / "FinancialBeancount"
 
@@ -96,6 +94,7 @@ def test_launch_update_helper_copies_helper_outside_installation(tmp_path):
 
     with (
         patch("beancount_dedup.desktop_app.sys.executable", str(executable)),
+        patch("beancount_dedup.desktop_app.sys.platform", "win32"),
         patch("beancount_dedup.desktop_app.subprocess.Popen") as popen,
     ):
         controller._launch_update_helper(prepared)
@@ -109,7 +108,9 @@ def test_launch_update_helper_copies_helper_outside_installation(tmp_path):
 
 
 def test_staged_update_permission_failure_offers_manual_path_without_closing(tmp_path):
-    prepared = PreparedUpdate("0.3.0", tmp_path / "unpacked" / "FinancialBeancount", tmp_path / "plan")
+    prepared = PreparedUpdate(
+        "0.3.0", tmp_path / "unpacked" / "FinancialBeancount", tmp_path / "plan"
+    )
     controller = object.__new__(DesktopController)
     controller.update_button = Mock()
     controller.status = Mock()
@@ -127,7 +128,9 @@ def test_staged_update_permission_failure_offers_manual_path_without_closing(tmp
         controller._show_staged_update(prepared)
 
     controller._messagebox.showwarning.assert_called_once()
-    assert str(prepared.application_directory) in controller._messagebox.showwarning.call_args.args[1]
+    assert (
+        str(prepared.application_directory) in controller._messagebox.showwarning.call_args.args[1]
+    )
     controller.close.assert_not_called()
 
 
@@ -146,10 +149,12 @@ def test_elevated_update_uses_windows_uac_and_only_then_closes(tmp_path):
     with (
         patch("beancount_dedup.desktop_app.sys.executable", str(executable)),
         patch("beancount_dedup.desktop_app.sys.platform", "win32"),
-        patch("ctypes.windll.shell32.ShellExecuteW", return_value=42) as shell_execute,
+        patch("ctypes.windll", create=True) as windll,
     ):
+        windll.shell32.ShellExecuteW.return_value = 42
         controller._launch_update_helper(prepared, elevated=True)
 
+    shell_execute = windll.shell32.ShellExecuteW
     assert shell_execute.call_args.args[1] == "runas"
     assert "--install-dir" in shell_execute.call_args.args[3]
     controller.close.assert_called_once_with()

@@ -212,9 +212,12 @@ def test_failed_migration_rolls_back_and_keeps_restorable_backup(
     restore_backup(backup, restored)
     restored_connection = sqlite3.connect(restored)
     try:
-        assert restored_connection.execute(
-            "SELECT value FROM schema_meta WHERE key='schema_version'"
-        ).fetchone()[0] == "9"
+        assert (
+            restored_connection.execute(
+                "SELECT value FROM schema_meta WHERE key='schema_version'"
+            ).fetchone()[0]
+            == "9"
+        )
     finally:
         restored_connection.close()
 
@@ -251,11 +254,17 @@ def test_migration_does_not_start_when_backup_verification_fails(
 
     connection = sqlite3.connect(database)
     try:
-        assert connection.execute(
-            "SELECT value FROM schema_meta WHERE key='schema_version'"
-        ).fetchone()[0] == "9"
-        assert connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
-        ).fetchone() is None
+        assert (
+            connection.execute(
+                "SELECT value FROM schema_meta WHERE key='schema_version'"
+            ).fetchone()[0]
+            == "9"
+        )
+        assert (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+            ).fetchone()
+            is None
+        )
     finally:
         connection.close()

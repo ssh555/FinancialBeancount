@@ -25,9 +25,15 @@ def _assets(path: Path) -> None:
         "FinancialBeancount-macos-ARM64.dmg",
         "FinancialBeancount-linux-X64.AppImage",
     ]
-    names = archives + native + [
-        suffix for archive in archives for suffix in (f"{archive}.sha256", f"{archive}.sha256.sig")
-    ]
+    names = (
+        archives
+        + native
+        + [
+            suffix
+            for archive in archives
+            for suffix in (f"{archive}.sha256", f"{archive}.sha256.sig")
+        ]
+    )
     names += [f"{installer}.signature.json" for installer in native]
     names += [
         "FinancialBeancount-linux-X64.AppImage.asc",

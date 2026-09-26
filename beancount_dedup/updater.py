@@ -206,23 +206,24 @@ def download_and_verify_update(
     temporary_path = archive_path.with_suffix(f"{archive_path.suffix}.part")
 
     checksum_bytes = _download_small_asset(update.checksum, MAX_CHECKSUM_BYTES, timeout, "校验文件")
-    signature_bytes = _download_small_asset(update.signature, MAX_SIGNATURE_BYTES, timeout, "签名文件")
+    signature_bytes = _download_small_asset(
+        update.signature, MAX_SIGNATURE_BYTES, timeout, "签名文件"
+    )
     _verify_checksum_signature(checksum_bytes, signature_bytes, public_key)
     expected = _parse_checksum(checksum_bytes, update.checksum.name)
     checksum_path.write_bytes(checksum_bytes)
     signature_path.write_bytes(signature_bytes)
     if archive_path.is_file() and _sha256_file(archive_path) == expected:
-        return StagedUpdate(
-            update.version, archive_path, checksum_path, signature_path, expected
-        )
+        return StagedUpdate(update.version, archive_path, checksum_path, signature_path, expected)
 
     digest = hashlib.sha256()
     received = 0
     request = _asset_request(update.archive.download_url)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response, temporary_path.open(
-            "wb"
-        ) as stream:
+        with (
+            urllib.request.urlopen(request, timeout=timeout) as response,
+            temporary_path.open("wb") as stream,
+        ):
             while chunk := response.read(DOWNLOAD_CHUNK_BYTES):
                 received += len(chunk)
                 if received > update.archive.size or received > MAX_ARCHIVE_BYTES:
@@ -312,11 +313,11 @@ def _remove_scoped_directory(path: Path, parent: Path) -> None:
         shutil.rmtree(resolved)
 
 
-def _download_small_asset(
-    asset: ReleaseAsset, maximum: int, timeout: float, label: str
-) -> bytes:
+def _download_small_asset(asset: ReleaseAsset, maximum: int, timeout: float, label: str) -> bytes:
     try:
-        with urllib.request.urlopen(_asset_request(asset.download_url), timeout=timeout) as response:
+        with urllib.request.urlopen(
+            _asset_request(asset.download_url), timeout=timeout
+        ) as response:
             raw_value = bytes(response.read(maximum + 1))
     except (OSError, urllib.error.HTTPError) as exc:
         raise UpdateCheckError(f"无法下载更新{label}：{exc}") from exc

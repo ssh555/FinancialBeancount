@@ -65,7 +65,10 @@ _EXPORTS = {
     "StatisticsReport": ("statistics", "StatisticsReport"),
     "StatisticsService": ("statistics", "StatisticsService"),
     "Transaction": ("models", "Transaction"),
-    "TransactionClassificationService": ("transaction_classification", "TransactionClassificationService"),
+    "TransactionClassificationService": (
+        "transaction_classification",
+        "TransactionClassificationService",
+    ),
     "TransactionFingerprinter": ("fingerprinter", "TransactionFingerprinter"),
     "UpdateCheckError": ("updater", "UpdateCheckError"),
     "UpdateInfo": ("updater", "UpdateInfo"),
@@ -73,7 +76,10 @@ _EXPORTS = {
     "download_and_verify_update": ("updater", "download_and_verify_update"),
     "prepare_update_installation": ("updater", "prepare_update_installation"),
     "convert_to_csv": ("converters", "convert_to_csv"),
-    "create_builtin_statement_registry": ("statement_adapters", "create_builtin_statement_registry"),
+    "create_builtin_statement_registry": (
+        "statement_adapters",
+        "create_builtin_statement_registry",
+    ),
     "export_backup": ("backup", "export_backup"),
     "export_portable_archive": ("portable_archive", "export_portable_archive"),
     "import_portable_archive": ("portable_archive", "import_portable_archive"),

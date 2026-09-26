@@ -20,7 +20,7 @@ def test_dmg_builder_preserves_bundle_and_adds_applications_link() -> None:
     assert 'ditto "$app_bundle"' in script
     assert 'ln -s /Applications "$staging/Applications"' in script
     assert "hdiutil create" in script
-    assert '-format UDZO' in script
+    assert "-format UDZO" in script
     assert 'if [[ -e "$output_dmg" ]]' in script
 
 
@@ -28,7 +28,7 @@ def test_dmg_smoke_keeps_application_and_ledger_lifecycles_separate() -> None:
     script = SMOKE.read_text(encoding="utf-8")
     assert "hdiutil attach" in script
     assert "hdiutil detach" in script
-    assert 'Library/Application Support/FinancialBeancount' in script
+    assert "Library/Application Support/FinancialBeancount" in script
     assert 'rm -rf "$applications/FinancialBeancount.app"' in script
     assert 'cat "$sentinel"' in script
 
@@ -54,7 +54,7 @@ def test_macos_signed_release_is_hardened_notarized_and_stapled() -> None:
         "FINANCIAL_BEANCOUNT_APPLE_APP_PASSWORD",
         "FINANCIAL_BEANCOUNT_APPLE_TEAM_ID",
     ):
-        assert f'${{{variable}:?' in script
+        assert f"${{{variable}:?" in script
     assert "--options runtime" in script
     assert "--timestamp" in script
     assert "codesign --verify --deep --strict" in script

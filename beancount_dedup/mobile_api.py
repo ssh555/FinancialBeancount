@@ -254,7 +254,10 @@ class MobileLedgerApi:
         changes = body.get("changes")
         if not isinstance(changes, dict) or not changes:
             raise ValueError("changes must be a non-empty object")
-        if not all(isinstance(key, str) and (isinstance(value, str) or value is None) for key, value in changes.items()):
+        if not all(
+            isinstance(key, str) and (isinstance(value, str) or value is None)
+            for key, value in changes.items()
+        ):
             raise TypeError("change values must be strings or null")
         _validate_transaction_changes(changes)
         updated = self.store.update_canonical_with_event(canonical_id, changes, actor)
@@ -309,9 +312,7 @@ class MobileLedgerApi:
         batches, total = self.store.list_import_batches_page(
             limit=page_size, offset=(page - 1) * page_size
         )
-        return self._ok(
-            batches, {"page": page, "page_size": page_size, "total": total}
-        )
+        return self._ok(batches, {"page": page, "page_size": page_size, "total": total})
 
     def _export_portable_archive(self) -> ApiResponse:
         with tempfile.TemporaryDirectory() as directory:
@@ -522,16 +523,16 @@ def serve_mobile_api(
     api = MobileLedgerApi(store)
 
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
+        def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler protocol name
             self._dispatch()
 
-        def do_POST(self) -> None:
+        def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler protocol name
             self._dispatch()
 
-        def do_PATCH(self) -> None:
+        def do_PATCH(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler protocol name
             self._dispatch()
 
-        def do_DELETE(self) -> None:
+        def do_DELETE(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler protocol name
             self._dispatch()
 
         def _dispatch(self) -> None:
@@ -553,7 +554,12 @@ def serve_mobile_api(
                     self._write(
                         ApiResponse(
                             HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                            {"error": {"code": "request_too_large", "message": "request body exceeds 70 MiB"}},
+                            {
+                                "error": {
+                                    "code": "request_too_large",
+                                    "message": "request body exceeds 70 MiB",
+                                }
+                            },
                         )
                     )
                     return
