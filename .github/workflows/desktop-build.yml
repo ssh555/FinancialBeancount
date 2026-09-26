@@ -84,6 +84,28 @@ jobs:
         run: >-
           bash installer/macos/smoke_dmg.sh
           artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.dmg
+      - name: Download pinned AppImage packaging tool
+        if: ${{ matrix.platform == 'linux' }}
+        run: |
+          curl --fail --location --retry 3 \
+            --output appimagetool.AppImage \
+            https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  appimagetool.AppImage" | sha256sum --check
+          chmod 755 appimagetool.AppImage
+          ./appimagetool.AppImage --appimage-extract >/dev/null
+          mv squashfs-root appimagetool-root
+      - name: Build Linux AppImage
+        if: ${{ matrix.platform == 'linux' }}
+        run: >-
+          bash installer/linux/build_appimage.sh
+          dist/FinancialBeancount
+          appimagetool-root/AppRun
+          artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.AppImage
+      - name: Verify Linux AppImage replacement and data preservation
+        if: ${{ matrix.platform == 'linux' }}
+        run: >-
+          bash installer/linux/smoke_appimage.sh
+          artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.AppImage
       - name: Sign and notarize macOS DMG
         if: ${{ matrix.platform == 'macos' && inputs.signed_release }}
         env:
@@ -121,6 +143,25 @@ jobs:
           --platform windows
           --installer artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.msi
           --expected-identity "${{ vars.FINANCIAL_BEANCOUNT_WINDOWS_PUBLISHER }}"
+      - name: Sign Linux AppImage
+        if: ${{ matrix.platform == 'linux' && inputs.signed_release }}
+        env:
+          FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY: ${{ secrets.FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY }}
+          FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY_PASSPHRASE: ${{ secrets.FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY_PASSPHRASE }}
+        run: >-
+          bash installer/linux/sign.sh
+          artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.AppImage
+          "${{ vars.FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT }}"
+          artifacts/FinancialBeancount-linux-release-keyring.gpg
+      - name: Record Linux native signature evidence
+        if: ${{ matrix.platform == 'linux' && inputs.signed_release }}
+        run: >-
+          python scripts/verify_platform_signature.py
+          --platform linux
+          --installer artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.AppImage
+          --detached-signature artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.AppImage.asc
+          --keyring artifacts/FinancialBeancount-linux-release-keyring.gpg
+          --expected-identity "${{ vars.FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT }}"
       - name: Package development asset and checksum
         if: ${{ !inputs.signed_release }}
         run: >-
@@ -157,6 +198,15 @@ jobs:
           --architecture ${{ runner.arch }}
       - name: Verify signed macOS release gate
         if: ${{ matrix.platform == 'macos' && inputs.signed_release }}
+        run: >-
+          python scripts/release_gate.py
+          --repository .
+          --artifacts artifacts
+          --mode release
+          --platform ${{ matrix.platform }}
+          --architecture ${{ runner.arch }}
+      - name: Verify signed Linux release gate
+        if: ${{ matrix.platform == 'linux' && inputs.signed_release }}
         run: >-
           python scripts/release_gate.py
           --repository .

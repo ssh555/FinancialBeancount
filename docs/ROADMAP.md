@@ -99,5 +99,6 @@ review, and end-to-end tests are complete.
   notarization result, staples and validates the ticket, runs Gatekeeper assessment, records native
   evidence and enters the strict macOS publication gate without an unsigned fallback.
 
-Windows credential provisioning, macOS/Linux native installer construction and installer upgrades
-from every published version remain future release batches.
+Publisher credential validation and installer upgrades from every published version remain future
+release batches. Linux AppImage construction, replacement-upgrade data preservation, detached GPG
+signing and the strict native gate are implemented; the real publisher-key run remains pending.

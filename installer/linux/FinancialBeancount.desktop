@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Financial Beancount
+Comment=Local-first statement import and ledger review
+Comment[zh_CN]=本地优先的账单导入与账本审核工具
+Exec=FinancialBeancount
+Icon=financial-beancount
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=true

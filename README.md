@@ -122,8 +122,8 @@ public Releases.
 The signed Windows workflow has a fail-closed Authenticode path for the main application, updater
 helper and MSI, including RFC 3161 timestamps, trusted-chain verification and expected-publisher
 pinning. It becomes usable only after protected certificate credentials and repository variables are
-provisioned; it has no unsigned fallback. macOS and Linux native distribution signing remain release
-blockers.
+provisioned; it has no unsigned fallback. macOS Developer ID and Linux OpenPGP publisher credentials
+still require positive clean-runner validation before a public release.
 
 #### Release operator configuration
 
@@ -137,9 +137,9 @@ The official repository's release operator must provision protected GitHub Actio
 repository variables for the Ed25519 update identity plus each platform being published. Windows
 requires a trusted Authenticode PKCS#12 certificate, its password, an HTTPS RFC 3161 timestamp URL
 and the expected publisher. macOS requires a Developer ID Application PKCS#12 certificate, its
-password, signing identity, Apple ID, app-specific password and Team ID. Linux credential names will
-be fixed together with the selected native package/signing format. Fork publishers provide their own
-identities and embed the matching update public key in their builds.
+password, signing identity, Apple ID, app-specific password and Team ID. Linux AppImage signing uses
+a base64 OpenPGP secret-key export, optional passphrase and pinned full signing fingerprint. Fork
+publishers provide their own identities and embed the matching update public key in their builds.
 
 The complete variable names, protection expectations, platform status, verification commands and
 publication blockers are maintained in [`docs/RELEASE.md`](docs/RELEASE.md). That document must be
@@ -401,6 +401,10 @@ financial-beancount
 维护者可使用 `pyinstaller --clean --noconfirm FinancialBeancount.spec` 生成自包含应用目录。
 手动触发的 GitHub Actions 工作流可构建未签名的 Windows、macOS 和 Linux 验证产物；带签名安装器和
 自动更新属于正式发布门禁，目前不会提前发布。
+
+Linux 验证产物包含单文件 AppImage；安装为用户目录文件复制，升级直接替换该文件，卸载只删除程序文件，
+不会删除独立存放的账本。正式 Linux 作业使用发布者 OpenPGP 密钥生成分离签名并固定完整指纹；密钥由实际
+发布者通过受保护的 GitHub Actions Secret/Variable 配置，普通用户无需配置。
 
 ## 项目结构
 

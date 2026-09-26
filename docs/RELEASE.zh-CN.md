@@ -17,7 +17,7 @@
 | 更新清单 | Variable `FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY`；Secret `FINANCIAL_BEANCOUNT_RELEASE_SIGNING_KEY` | 实际发布者 | 已实现；必须是匹配的 Ed25519 密钥对 |
 | Windows | Secrets `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE`、`FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD`；Variables `FINANCIAL_BEANCOUNT_WINDOWS_TIMESTAMP_URL`、`FINANCIAL_BEANCOUNT_WINDOWS_PUBLISHER` | Windows 发布者 | 已实现；正式证书待配置 |
 | macOS | Secrets `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE`、`FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE_PASSWORD`、`FINANCIAL_BEANCOUNT_APPLE_ID`、`FINANCIAL_BEANCOUNT_APPLE_APP_PASSWORD`；Variables `FINANCIAL_BEANCOUNT_MACOS_SIGNING_IDENTITY`、`FINANCIAL_BEANCOUNT_APPLE_TEAM_ID` | Apple Developer 账号持有者 | 工作流已实现；干净 Runner 验证待完成 |
-| Linux | 随最终包格式定义专用签名密钥及配置名 | Linux 发布者 | 未实现，仍是发布阻塞项 |
+| Linux | Secret `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY`、可选 `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY_PASSPHRASE`；Variable `FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT` | Linux 发布者 | AppImage 链路已实现；正式发布者密钥正向验证待完成 |
 
 证书续期、吊销和发布者交接属于部署操作。轮换前必须在候选构建中验证新信任链，按需更新固定公钥/身份，保留上一可信版本的回滚能力，并在发行说明中记录。证书过期或被吊销时不得通过关闭门禁绕过。
 
@@ -31,7 +31,7 @@
 - 失败关闭的预览门禁：版本一致性、必要文档、目标归档及精确摘要。
 - 严格发布门禁：签名更新清单、原生安装包及与安装包摘要绑定的系统签名证据。
 
-Windows 和 macOS 的严格门禁只在对应 `signed_release` 作业中启用。Linux 在原生安装包和签名链完成前不得进入正式门禁。
+Windows、macOS 与 Linux 的严格门禁分别只在对应 `signed_release` 作业中启用；每个平台都必须先生成并验证自身原生产物。
 
 ## 完整私有账本验收
 
@@ -59,11 +59,17 @@ WiX 校验保持启用，仅抑制与本项目设计明确冲突的 ICE38、ICE6
 
 正式作业把 Developer ID Application 证书导入临时 Keychain，为应用启用强化运行时和安全时间戳，签名应用与 DMG，等待 `notarytool` 明确返回 `Accepted`，装订并验证票据，执行 Gatekeeper 评估，生成原生证据并进入严格门禁。临时证书和 Keychain 在任何退出路径都会删除。
 
+## Linux AppImage 发布链路
+
+Linux 使用标准 AppDir 结构及通过 SHA-256 固定的官方 `appimagetool` 1.9.1 生成单文件 AppImage。安装就是用户目录中的文件复制，升级为原子替换该文件，卸载仅删除该文件。CI 会提取真实产物并检查入口和主程序，再执行替换升级与删除，同时确认独立用户数据目录中的账本哨兵全程保留。
+
+正式作业把发布者 OpenPGP 私钥导入临时 GnuPG 目录，要求完整 40 位指纹与 `FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT` 完全一致，生成 ASCII 分离签名并导出公开验证 Keyring，随后使用 `gpgv` 验证、生成与 AppImage 摘要绑定的证据并进入严格 Linux 门禁。临时私钥目录会在任何退出路径删除；公开发布前仍需使用实际发布者密钥在干净 Runner 上完成正向验证。
+
 ## 当前发布阻塞项
 
 - 由实际发布者配置并验证 Windows 与 Apple 正式凭据。
 - macOS 签名、公证和 DMG 流程在干净 macOS Runner 上完成正向验证。
-- 确定 Linux 包格式，完成签名、安装、升级、卸载与回滚验证。
+- 使用实际 Linux 发布者 OpenPGP 密钥在干净 Runner 上完成 AppImage 正向签名验证。
 - 所有目标平台必须能从每个仍受支持的正式版本原位升级且不删除用户账本。
 
 在上述条件全部满足前，不得创建公开 Release。

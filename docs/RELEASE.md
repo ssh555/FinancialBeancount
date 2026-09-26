@@ -26,7 +26,7 @@ Requesting signed mode is fail-closed and never substitutes a test certificate o
 | Update manifest | Variable `FINANCIAL_BEANCOUNT_UPDATE_PUBLIC_KEY`; secret `FINANCIAL_BEANCOUNT_RELEASE_SIGNING_KEY` | Release publisher | Implemented; keys must be a matching Ed25519 pair |
 | Windows | Secrets `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE`, `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD`; variables `FINANCIAL_BEANCOUNT_WINDOWS_TIMESTAMP_URL`, `FINANCIAL_BEANCOUNT_WINDOWS_PUBLISHER` | Windows release publisher | Implemented; real certificate provisioning pending |
 | macOS | Secrets `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE`, `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE_PASSWORD`, `FINANCIAL_BEANCOUNT_APPLE_ID`, `FINANCIAL_BEANCOUNT_APPLE_APP_PASSWORD`; variables `FINANCIAL_BEANCOUNT_MACOS_SIGNING_IDENTITY`, `FINANCIAL_BEANCOUNT_APPLE_TEAM_ID` | Apple Developer account holder | Implemented in workflow; clean-runner validation pending |
-| Linux | To be defined with the selected package format and dedicated signing key | Linux release publisher | Not implemented; publication blocker |
+| Linux | Secret `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY` and optional `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY_PASSPHRASE`; variable `FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT` | Linux release publisher | AppImage path implemented; real publisher-key validation pending |
 
 Certificate renewal, revocation and operator handover are deployment operations. Before rotating any
 identity, the publisher must verify the new trust chain in a preview/release-candidate run, update the
@@ -53,8 +53,8 @@ python scripts/release_gate.py --repository . --artifacts artifacts \
   --mode preview --platform windows --architecture X64
 ```
 
-`--mode release` is enabled only for the signed Windows job. macOS and Linux remain intentionally
-outside that gate until their native installer and platform-signature stages described below exist.
+`--mode release` is enabled independently for every signed Windows, macOS and Linux job. Each job
+must produce and verify its own native artifact before it can pass.
 
 Platform verification evidence must be generated on the matching clean runner after signing. The
 verifier pins the expected publisher or key fingerprint, rejects a non-zero native-tool result, and
@@ -111,9 +111,9 @@ Actions secrets. Test or self-signed certificates do not satisfy the release gat
 - **macOS:** an Apple Developer ID Application certificate, App Store Connect notarization credentials
   and hardened-runtime entitlements. Sign the complete app bundle, notarize it, staple the ticket and
   verify with both `codesign` and Gatekeeper on a clean runner.
-- **Linux:** a selected distributable installer/package format and its repository or package-signing
-  identity. The Ed25519 update signature protects portable archives but does not replace distribution
-  package signing.
+- **Linux:** a dedicated OpenPGP release-signing key. The full 40-character fingerprint is pinned as
+  a repository variable; the base64 secret-key export and optional passphrase remain protected
+  Actions secrets. Ed25519 update signatures protect portable archives independently.
 
 ## Publication blockers
 
@@ -189,5 +189,18 @@ The signed macOS job requires:
 - repository variable `FINANCIAL_BEANCOUNT_APPLE_TEAM_ID`.
 
 The temporary keychain and certificate are deleted on every exit. This path remains unverified until
-it runs with the real credentials on a clean macOS runner, and the overall release remains blocked by
-Linux packaging.
+it runs with the real credentials on a clean macOS runner.
+
+## Linux AppImage
+
+Linux builds use the official AppDir layout and SHA-256-pinned `appimagetool` 1.9.1 to create a
+single AppImage. Installation is a user-owned file copy; upgrade atomically replaces that file and uninstall
+removes only that file. CI extracts the image, checks its entry point and payload, replaces an
+installed copy, removes it, and proves that a ledger sentinel in the separate user-data directory
+survives throughout.
+
+Signed mode imports the publisher key into a temporary GnuPG home, refuses a key whose full
+fingerprint differs from `FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT`, creates an armored detached
+signature, exports a public verification keyring, verifies with `gpgv`, records hash-bound evidence,
+and runs the strict Linux Release gate. The temporary secret-key home is deleted on every exit. A
+positive run with the real publisher key remains required.
