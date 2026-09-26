@@ -44,7 +44,10 @@ def main() -> None:
                 encoding="utf-8",
             )
             (source / launcher_name).chmod(0o755)
-        shutil.copy2(system_launcher, target / launcher_name)
+        previous_launcher = target / launcher_name
+        shutil.copyfile(system_launcher, previous_launcher)
+        if sys.platform != "win32":
+            previous_launcher.chmod(0o755)
         (source / "build-marker.txt").write_text("new", encoding="utf-8")
         (target / "build-marker.txt").write_text("old", encoding="utf-8")
         plan = root / "staged" / "install-plan.json"
