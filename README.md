@@ -146,6 +146,10 @@ publication blockers are maintained in [`docs/RELEASE.md`](docs/RELEASE.md). Tha
 updated in the same change whenever a release credential, package format, signing command, supported
 upgrade range or publication gate changes.
 
+Release operators can manually start the signed candidate workflow with a tag exactly matching the
+source version. Only after every platform gate succeeds does it assemble the allowlisted assets into
+a draft GitHub Release. It does not publish the draft; publication remains a deliberate review step.
+
 Release-candidate acceptance can also run against the maintainer's complete private statement set.
 The acceptance command imports every supported extracted statement independently, reports skipped
 or unprocessed files, keeps ambiguous matches for review, exports one portable ledger archive, and
@@ -405,6 +409,9 @@ financial-beancount
 Linux 验证产物包含单文件 AppImage；安装为用户目录文件复制，升级直接替换该文件，卸载只删除程序文件，
 不会删除独立存放的账本。正式 Linux 作业使用发布者 OpenPGP 密钥生成分离签名并固定完整指纹；密钥由实际
 发布者通过受保护的 GitHub Actions Secret/Variable 配置，普通用户无需配置。
+
+实际发布者可手动输入与源码版本完全一致的标签启动签名候选流程。只有三平台门禁全部成功后，流程才把白名单
+内的完整产物组装为 GitHub 草稿 Release；草稿不会自动公开，仍须发布者复核后手动发布。
 
 ## 项目结构
 

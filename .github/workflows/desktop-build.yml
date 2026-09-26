@@ -1,6 +1,12 @@
 name: Desktop application build
 
 on:
+  workflow_call:
+    inputs:
+      signed_release:
+        description: Require release signing credentials and emit signed checksum manifests
+        required: true
+        type: boolean
   workflow_dispatch:
     inputs:
       signed_release:
@@ -67,7 +73,7 @@ jobs:
             -Output artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.msi `
             -Version $version
       - name: Verify Windows MSI in-place upgrade and data preservation
-        if: ${{ matrix.platform == 'windows' && !inputs.signed_release }}
+        if: ${{ matrix.platform == 'windows' }}
         shell: pwsh
         run: >-
           ./installer/windows/smoke_upgrade.ps1
@@ -118,6 +124,11 @@ jobs:
         run: >-
           bash installer/macos/sign_and_notarize.sh
           dist/FinancialBeancount.app
+          artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.dmg
+      - name: Verify signed macOS DMG replacement and data preservation
+        if: ${{ matrix.platform == 'macos' && inputs.signed_release }}
+        run: >-
+          bash installer/macos/smoke_dmg.sh
           artifacts/FinancialBeancount-${{ matrix.platform }}-${{ runner.arch }}.dmg
       - name: Record macOS native signature evidence
         if: ${{ matrix.platform == 'macos' && inputs.signed_release }}

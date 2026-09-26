@@ -5,6 +5,13 @@
 The repository does not currently publish GitHub Releases. The desktop workflow produces reviewable
 artifacts only; a successful workflow run is not permission to publish them.
 
+The manually dispatched `release-candidate.yml` workflow is the only automated Release-creation
+path. It requires an exact `vMAJOR.MINOR.PATCH` tag matching the source version, invokes all three
+signed platform jobs, downloads their artifacts, rejects missing, duplicate or unexpected assets,
+and creates a **draft** GitHub Release targeting the exact validated commit. It never publishes the
+draft. The actual publisher must review the notes, asset inventory and signature results in GitHub
+before manually publishing it.
+
 ## Ownership and documentation policy
 
 Release identities belong to the actual publisher of a release. End users do not configure signing
@@ -122,6 +129,11 @@ its operating-system signature on a clean runner, install over the previous supp
 removing per-user data, and pass the release-upgrade and privacy gates. The CI job must fail closed when
 credentials are missing, signatures are invalid, notarization fails or the installer requires an
 uninstall/reinstall cycle.
+
+Creating a draft candidate also requires `contents: write` for its final job. The signed build jobs
+receive the protected platform secrets through the same-repository reusable workflow. Preview builds
+and ordinary CI retain read-only contents permission. Re-running with an existing tag or draft fails
+instead of overwriting release assets.
 
 The cross-platform Ed25519 update manifest uses:
 

@@ -1,0 +1,65 @@
+name: Create signed draft release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact semantic version tag matching the source version (for example v0.3.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate requested tag against source version
+        run: python scripts/validate_release_candidate.py --repository . --tag "${{ inputs.tag }}"
+
+  signed-build:
+    needs: validate
+    uses: ./.github/workflows/desktop-build.yml
+    with:
+      signed_release: true
+    secrets: inherit
+
+  draft-release:
+    needs: signed-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FinancialBeancount-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify complete candidate asset inventory
+        run: >-
+          python scripts/validate_release_candidate.py
+          --repository .
+          --tag "${{ inputs.tag }}"
+          --artifacts release-assets
+      - name: Refuse an existing immutable tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG"; then
+            echo "release tag already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+      - name: Create review-only draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ inputs.tag }}"
+          release-assets/*
+          --repo "${{ github.repository }}"
+          --target "${{ github.sha }}"
+          --title "FinancialBeancount ${{ inputs.tag }}"
+          --generate-notes
+          --draft
