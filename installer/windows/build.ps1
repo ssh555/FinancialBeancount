@@ -37,7 +37,20 @@ try {
     & candle.exe -nologo -arch x64 "-dSourceDir=$sourcePath" -out $filesObject $harvested
     if ($LASTEXITCODE -ne 0) { throw "WiX candle failed for harvested application files" }
 
-    $lightArguments = @("-nologo", "-out", $outputPath, $productObject, $filesObject)
+    # These ICE rules assume machine-wide or roaming multi-user components. This package is
+    # deliberately per-user under LocalAppData and supports same-version preview rebuilds. Keep all
+    # other validation enabled; the install/upgrade/uninstall smoke test covers this exact lifecycle.
+    $lightArguments = @(
+        "-nologo",
+        "-sice:ICE38",
+        "-sice:ICE61",
+        "-sice:ICE64",
+        "-sice:ICE91",
+        "-out",
+        $outputPath,
+        $productObject,
+        $filesObject
+    )
     if ($SkipValidation) {
         $lightArguments = @("-sval") + $lightArguments
     }

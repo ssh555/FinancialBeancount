@@ -27,7 +27,10 @@ def main() -> None:
         if sys.platform == "win32":
             system_launcher = Path(os.environ["SYSTEMROOT"]) / "System32" / "where.exe"
         else:
-            system_launcher = Path("/bin/true")
+            true_command = shutil.which("true")
+            if true_command is None:
+                raise RuntimeError("the platform does not provide a true command for smoke setup")
+            system_launcher = Path(true_command)
         if sys.platform == "win32":
             launcher_name = "launcher.cmd"
             (source / launcher_name).write_text(

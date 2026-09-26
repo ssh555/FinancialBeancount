@@ -55,7 +55,9 @@ def test_build_script_harvests_payload_with_stable_component_guids() -> None:
     assert "-sreg" in script
     assert "candle.exe -nologo -arch x64" in script
     assert '& light.exe @lightArguments' in script
-    assert '@("-nologo", "-out"' in script
+    for expected_ice in ("ICE38", "ICE61", "ICE64", "ICE91"):
+        assert f'"-sice:{expected_ice}"' in script
+    assert '"-sval"' in script
     assert "[switch]$SkipValidation" in script
     assert 'if ($SkipValidation)' in script
     assert '@("-sval")' in script

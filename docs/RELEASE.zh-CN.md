@@ -51,6 +51,8 @@ python scripts/acceptance_full_ledger.py \
 
 正式作业依次签名并验证主程序、更新助手和 MSI，使用 SHA-256 与 HTTPS RFC 3161 时间戳，固定预期发布者，生成摘要绑定证据后运行严格门禁。凭据缺失、Base64/PFX 无效、密码错误、时间戳失败、信任链无效或发布者不匹配都会终止。
 
+WiX 校验保持启用，仅抑制与本项目设计明确冲突的 ICE38、ICE64、ICE91（它们假设用户目录文件采用漫游或全机器组件规则）以及 ICE61（它拒绝有意支持的同版本预览重构包）。真实安装、升级、卸载和账本保留测试是这些精确抑制项的强制补偿门禁；CI 不使用全局跳过验证。
+
 ## macOS 发布链路
 
 预览构建生成包含 `FinancialBeancount.app` 和 `/Applications` 链接的压缩只读 DMG，并在临时目录验证挂载、替换升级、移除和 Application Support 账本保留。

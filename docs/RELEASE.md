@@ -160,6 +160,12 @@ application, updater and MSI and must pass the strict native verification gate; 
 Windows artifact eligible for release review, but does not remove the macOS/Linux publication
 blockers.
 
+WiX validation remains enabled except for ICE38, ICE64 and ICE91 (which assume roaming or
+machine-wide handling for files installed below a user profile) and ICE61 (which rejects the
+intentional same-version preview rebuild path). The real install/upgrade/uninstall smoke test is the
+required compensating gate for those narrowly documented suppressions; CI never uses global
+validation suppression.
+
 ## macOS DMG preview
 
 Unsigned macOS development builds now create a compressed read-only DMG containing the preserved
