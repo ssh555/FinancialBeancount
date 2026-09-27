@@ -128,3 +128,7 @@ def test_native_android_data_surface_keeps_platform_file_boundaries() -> None:
         assert f"fun {operation}" in source
     assert "data class QueueItem" in source
     assert 'setTitle("覆盖当前账本？")' in source
+    assert "/api/v1/import-formats" in source
+    assert "/api/v1/imports" in source
+    assert "fun acceptFiles(" in source
+    assert "来源账户" in source
