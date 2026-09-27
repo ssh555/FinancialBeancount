@@ -2,15 +2,18 @@ package io.github.ssh555.financialbeancount
 
 import android.content.Context
 import android.graphics.Typeface
+import android.text.Editable
+import android.text.TextWatcher
 import android.text.util.Linkify
 import android.view.Gravity
 import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.Spinner
 import android.widget.ArrayAdapter
 import android.widget.TextView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import org.json.JSONObject
 
 class NativeDataView(context: Context, private val client: NativeLedgerClient, private val host: Host) : LinearLayout(context) {
@@ -77,19 +80,36 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
                 NativeUi.card(this, 14)
                 addView(TextView(context).apply { text = "${item.relativePath}\n${item.status}${item.message.takeIf(String::isNotBlank)?.let { " · $it" }.orEmpty()}" })
                 if (item.status == "等待导入") {
-                    val spinner = Spinner(context).apply {
-                        adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, item.formats.map { it.displayName })
-                        setSelection(item.formats.indexOfFirst { it.formatId == item.formatId }.coerceAtLeast(0))
-                        onItemSelectedListener = SimpleItemSelectedListener { position -> item.formatId = item.formats[position].formatId }
+                    val formatNames = item.formats.map { it.displayName }
+                    val format = MaterialAutoCompleteTextView(context).apply {
+                        setAdapter(ArrayAdapter(context, android.R.layout.simple_dropdown_item_1line, formatNames))
+                        val initial = item.formats.indexOfFirst { it.formatId == item.formatId }.coerceAtLeast(0)
+                        setText(formatNames.getOrElse(initial) { "自动识别" }, false)
+                        setOnItemClickListener { _, _, position, _ -> item.formatId = item.formats[position].formatId }
                     }
-                    val account = EditText(context).apply {
-                        hint = "来源账户，例如：招商银行-尾号1234"
+                    val formatLayout = TextInputLayout(context).apply {
+                        hint = "账单格式"
+                        endIconMode = TextInputLayout.END_ICON_DROPDOWN_MENU
+                        addView(format, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                    }
+                    val account = TextInputEditText(context).apply {
                         setText(item.sourceAccount)
-                        minHeight = dp(48)
-                        setOnFocusChangeListener { _, focused -> if (!focused) item.sourceAccount = text.toString().trim() }
+                        addTextChangedListener(object : TextWatcher {
+                            override fun beforeTextChanged(value: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                            override fun onTextChanged(value: CharSequence?, start: Int, before: Int, count: Int) {
+                                item.sourceAccount = value?.toString()?.trim().orEmpty()
+                            }
+                            override fun afterTextChanged(value: Editable?) = Unit
+                        })
                     }
-                    addView(spinner)
-                    addView(account)
+                    val accountLayout = TextInputLayout(context).apply {
+                        hint = "来源账户"
+                        helperText = "例如：招商银行-尾号 1234"
+                        boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+                        addView(account, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                    }
+                    addView(formatLayout, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(8), 0, dp(4)) })
+                    addView(accountLayout, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, 0) })
                 }
             })
         }

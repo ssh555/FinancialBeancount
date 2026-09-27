@@ -6,11 +6,13 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -126,7 +128,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
             val endpoint = endpoint(type, item)
             list.addView(LinearLayout(context).apply {
                 orientation = VERTICAL
-                setPadding(0, dp(10), 0, dp(10))
+                setPadding(0, dp(5), 0, dp(5))
                 if (type == "warnings" || type == "acknowledged") addView(CheckBox(context).apply {
                     val relationshipId = item.getString("relationship_id")
                     text = "选择此项"
@@ -134,12 +136,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
                     setOnCheckedChangeListener { _, checked -> if (checked) selectedWarnings.add(relationshipId) else selectedWarnings.remove(relationshipId) }
                     warningChecks.add(this)
                 })
-                addView(Button(context).apply {
-                    isAllCaps = false
-                    gravity = Gravity.START
-                    text = "${title(type, item)}\n${subtitle(type, item)}"
-                    setOnClickListener { showDetail(type, item, endpoint) }
-                })
+                addView(reviewCard(type, item, endpoint))
             })
         }
         NativeUi.styleTree(list)
@@ -148,7 +145,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
     private fun showDetail(type: String, item: JSONObject, endpoint: String) {
         val builder = MaterialAlertDialogBuilder(context)
             .setTitle(title(type, item))
-            .setMessage(item.toString(2))
+            .setView(reviewDetails(type, item))
             .setNegativeButton("关闭", null)
         if (type != "warnings" && type != "acknowledged") {
             builder.setPositiveButton(if (type == "matches" || type == "refunds") "关联/合并" else "确认并入") { _, _ -> decide(endpoint, "confirm") }
@@ -184,15 +181,15 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
         val merchant = edit("商户", merchantValue)
         val category = edit("分类", source?.optString("category"))
         val notes = edit("备注", source?.optString("notes"))
-        listOf(merchant, category, notes).forEach(fields::addView)
+        listOf(merchant.layout, category.layout, notes.layout).forEach { fields.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(5), 0, dp(5)) }) }
         MaterialAlertDialogBuilder(context)
             .setTitle("人工修改并完成审核")
             .setView(fields)
             .setPositiveButton("保存") { _, _ ->
                 val changes = JSONObject()
-                    .put("merchant", merchant.text.toString().trim())
-                    .put("category", category.text.toString().trim())
-                    .put("notes", notes.text.toString().trim())
+                    .put("merchant", merchant.input.text.toString().trim())
+                    .put("category", category.input.text.toString().trim())
+                    .put("notes", notes.input.text.toString().trim())
                 val action = if (type == "imports") "modify" else "confirm"
                 client.request(
                     "POST",
@@ -213,13 +210,13 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
         val merchant = edit("商户", source.optString("merchant"))
         val category = edit("分类", source.optString("category"))
         val notes = edit("备注", source.optString("notes"))
-        listOf(merchant, category, notes).forEach(fields::addView)
+        listOf(merchant.layout, category.layout, notes.layout).forEach { fields.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(5), 0, dp(5)) }) }
         MaterialAlertDialogBuilder(context)
             .setTitle("修正并入或排除")
             .setView(fields)
             .setPositiveButton("保存修正") { _, _ ->
-                val changes = JSONObject().put("merchant", merchant.text.toString().trim())
-                    .put("category", category.text.toString().trim()).put("notes", notes.text.toString().trim())
+                val changes = JSONObject().put("merchant", merchant.input.text.toString().trim())
+                    .put("category", category.input.text.toString().trim()).put("notes", notes.input.text.toString().trim())
                 client.request("PATCH", "/api/v1/transactions/$canonicalId", JSONObject().put("actor", "android-user").put("changes", changes)) { result ->
                     result.onSuccess { reload() }.onFailure { showError(it) }
                 }
@@ -276,8 +273,86 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
         else -> "建议 ${item.optString("proposed_type", "-")} / ${item.optString("proposed_category", "未分类")}"
     }
 
+    private fun reviewCard(type: String, item: JSONObject, endpoint: String) = MaterialCardView(context).apply {
+        radius = dp(16).toFloat()
+        cardElevation = dp(1).toFloat()
+        strokeWidth = dp(1)
+        setStrokeColor(NativeUi.line)
+        setCardBackgroundColor(NativeUi.card)
+        isClickable = true
+        isFocusable = true
+        contentDescription = "打开 ${title(type, item)} 的审核详情"
+        setOnClickListener { showDetail(type, item, endpoint) }
+        addView(LinearLayout(context).apply {
+            orientation = VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            addView(TextView(context).apply {
+                text = title(type, item)
+                textSize = 16f
+                setTypeface(typeface, Typeface.BOLD)
+                maxLines = 2
+            })
+            addView(TextView(context).apply {
+                text = subtitle(type, item)
+                textSize = 13f
+                setTextColor(NativeUi.muted)
+                setPadding(0, dp(7), 0, 0)
+            })
+        })
+    }
+
+    private fun reviewDetails(type: String, item: JSONObject) = LinearLayout(context).apply {
+        orientation = VERTICAL
+        setPadding(dp(24), 0, dp(24), dp(4))
+        val sources = when (type) {
+            "imports" -> listOf("导入内容" to item.optJSONObject("raw"))
+            "matches" -> listOf("付款记录" to item.optJSONObject("payment"), "候选记录" to item.optJSONObject("candidate"))
+            "refunds", "warnings", "acknowledged" -> listOf("退款记录" to item.optJSONObject("refund"), "关联付款" to item.optJSONObject("payment"))
+            else -> listOf("交易记录" to item.optJSONObject("transaction"))
+        }
+        sources.forEach { (label, nullableSource) ->
+            val source = nullableSource ?: return@forEach
+            addView(TextView(context).apply {
+                text = label
+                textSize = 13f
+                setTextColor(NativeUi.green)
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(12), 0, dp(3))
+            })
+            addView(detailLine("商户", source.optString("merchant").ifBlank { source.optString("counterparty", "未命名") }))
+            source.optString("amount").takeIf { it.isNotBlank() && it != "null" }?.let { addView(detailLine("金额", it)) }
+            source.optString("booking_date").takeIf { it.isNotBlank() && it != "null" }?.let { addView(detailLine("日期", it)) }
+            source.optString("category").takeIf { it.isNotBlank() && it != "null" }?.let { addView(detailLine("分类", it)) }
+        }
+        item.optString("confidence").takeIf { it.isNotBlank() && it != "null" }?.let { addView(detailLine("匹配置信度", it)) }
+        item.optString("reason").takeIf { it.isNotBlank() && it != "null" }?.let { addView(detailLine("判断依据", it)) }
+        addView(TextView(context).apply {
+            text = when (type) {
+                "warnings" -> "系统已自动处理；可关闭查看，也可返回列表批量通过或退回必须处理。"
+                "acknowledged" -> "此项已通过，可从列表选择后恢复为 Warning。"
+                else -> "核对信息后选择主要操作；其他处理方式可在“更多处理”中找到。"
+            }
+            setTextColor(NativeUi.muted)
+            setPadding(0, dp(14), 0, dp(8))
+        })
+    }
+
+    private fun detailLine(label: String, value: String) = TextView(context).apply {
+        text = "$label：$value"
+        textSize = 15f
+        setPadding(0, dp(3), 0, dp(3))
+    }
+
     private fun showError(error: Throwable) { list.removeAllViews(); list.addView(message(error.message ?: "审核加载失败")) }
-    private fun edit(hintText: String, value: String?) = EditText(context).apply { hint = hintText; setText(value.orEmpty()); minHeight = dp(52) }
+    private data class ReviewField(val layout: TextInputLayout, val input: TextInputEditText)
+    private fun edit(label: String, value: String?): ReviewField {
+        val input = TextInputEditText(context).apply { setText(value.orEmpty()); isSingleLine = label != "备注" }
+        return ReviewField(TextInputLayout(context).apply {
+            hint = label
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+            addView(input, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }, input)
+    }
     private fun message(value: String) = TextView(context).apply { text = value; gravity = Gravity.CENTER; setPadding(0, dp(32), 0, dp(32)) }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
