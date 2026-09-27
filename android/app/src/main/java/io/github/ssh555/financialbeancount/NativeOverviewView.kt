@@ -150,12 +150,13 @@ class NativeOverviewView(
     private fun metricRow(leftLabel: String, leftValue: String, rightLabel: String, rightValue: String) =
         LinearLayout(context).apply {
             orientation = HORIZONTAL
-            addView(metric(leftLabel, leftValue), LayoutParams(0, dp(104), 1f).apply { setMargins(0, dp(5), dp(5), dp(5)) })
-            addView(metric(rightLabel, rightValue), LayoutParams(0, dp(104), 1f).apply { setMargins(dp(5), dp(5), 0, dp(5)) })
+            addView(metric(leftLabel, leftValue), LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, dp(5), dp(5), dp(5)) })
+            addView(metric(rightLabel, rightValue), LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(5), dp(5), 0, dp(5)) })
         }
 
     private fun metric(label: String, value: String) = LinearLayout(context).apply {
         orientation = VERTICAL
+        minimumHeight = dp(112)
         setPadding(dp(14), dp(14), dp(14), dp(12))
         NativeUi.card(this)
         addView(TextView(context).apply { text = label; setTextColor(NativeUi.muted); textSize = 13f })

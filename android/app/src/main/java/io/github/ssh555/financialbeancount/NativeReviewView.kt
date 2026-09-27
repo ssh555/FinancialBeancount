@@ -10,6 +10,8 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -22,37 +24,30 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
     private var reviewType = "imports"
     private val selectedWarnings = mutableSetOf<String>()
     private val warningChecks = mutableListOf<CheckBox>()
-    private val typeButtons = mutableListOf<Pair<Button, String>>()
 
     init {
         orientation = VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(24))
         addView(TextView(context).apply { text = "待处理"; textSize = 26f; setTypeface(typeface, Typeface.BOLD) })
         addView(TextView(context).apply { text = "优先处理必须项：确认并入、修正并入、关联/合并、保留独立、排除，或暂缓。" })
-        addView(LinearLayout(context).apply {
-            orientation = VERTICAL
-            val choices = listOf("导入" to "imports", "归并" to "matches", "退款" to "refunds", "分类" to "classifications", "警告" to "warnings", "已通过" to "acknowledged")
-            choices.chunked(3).forEach { rowChoices ->
-                addView(LinearLayout(context).apply {
-                    orientation = HORIZONTAL
-                    rowChoices.forEach { (label, value) ->
-                        addView(Button(context).apply {
-                            text = label
-                            minWidth = 0
-                            minHeight = dp(44)
-                            tag = if (value == reviewType) "primary" else null
-                            typeButtons += this to value
-                            setOnClickListener {
-                                reviewType = value
-                                typeButtons.forEach { (button, buttonValue) ->
-                                    button.tag = if (buttonValue == value) "primary" else null
-                                    NativeUi.styleButton(button, primary = buttonValue == value)
-                                }
-                                reload()
-                            }
-                        }, LayoutParams(0, dp(48), 1f))
-                    }
+        addView(ChipGroup(context).apply {
+            isSingleSelection = true
+            isSelectionRequired = true
+            chipSpacingHorizontal = dp(8)
+            chipSpacingVertical = dp(6)
+            setPadding(0, dp(12), 0, dp(10))
+            listOf("导入" to "imports", "归并" to "matches", "退款" to "refunds", "分类" to "classifications", "警告" to "warnings", "已通过" to "acknowledged").forEach { (label, value) ->
+                addView(Chip(context).apply {
+                    id = View.generateViewId()
+                    text = label
+                    tag = value
+                    isCheckable = true
+                    isChecked = value == reviewType
                 })
+            }
+            setOnCheckedStateChangeListener { group, checkedIds ->
+                val selected = checkedIds.firstOrNull()?.let { group.findViewById<Chip>(it).tag as? String } ?: return@setOnCheckedStateChangeListener
+                if (selected != reviewType) { reviewType = selected; reload() }
             }
         })
         list.orientation = VERTICAL

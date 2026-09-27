@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import com.google.android.material.button.MaterialButton
 
 object NativeUi {
     private val regularTypeface: Typeface by lazy {
@@ -67,6 +68,10 @@ object NativeUi {
         button.isAllCaps = false
         button.typeface = Typeface.create(regularTypeface, Typeface.BOLD)
         button.stateListAnimator = null
+        if (button is MaterialButton) {
+            button.insetTop = 0
+            button.insetBottom = 0
+        }
         button.backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
         button.background = rounded(
             button.context,

@@ -208,6 +208,7 @@ def test_native_android_review_covers_all_queues_and_decisions() -> None:
     assert 'resolveWarnings("restore")' in source
     assert "MaterialCardView" in source
     assert "reviewDetails" in source
+    assert "ChipGroup" in source
     assert "item.toString(2)" not in source
 
 
@@ -244,6 +245,7 @@ def test_native_android_data_surface_keeps_platform_file_boundaries() -> None:
     assert "来源账户" in source
     assert "MaterialAutoCompleteTextView" in source
     assert "TextInputLayout" in source
+    assert "MaterialCardView" in source
     activity = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/MainActivity.kt"
     ).read_text(encoding="utf-8")

@@ -1,7 +1,7 @@
 package io.github.ssh555.financialbeancount
 
 import android.content.Context
-import android.widget.Button
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONArray
 import java.net.URLEncoder
@@ -10,7 +10,7 @@ class SourceFilterButton(
     context: Context,
     private val client: NativeLedgerClient,
     private val changed: () -> Unit,
-) : Button(context) {
+) : MaterialButton(context) {
     private val selected = linkedSetOf<String>()
 
     init {

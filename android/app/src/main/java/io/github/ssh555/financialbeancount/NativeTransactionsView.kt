@@ -15,6 +15,7 @@ import android.widget.ArrayAdapter
 import android.widget.TextView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -27,7 +28,7 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
     private val search = EditText(context)
     private val list = LinearLayout(context)
     private val progress = ProgressBar(context)
-    private val more = Button(context)
+    private val more = MaterialButton(context)
     private var page = 1
     private var loaded = 0
     private val sourceFilter = SourceFilterButton(context, client) { reload() }
@@ -39,8 +40,8 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             setPadding(0, dp(6), 0, dp(6))
-            addView(Button(context).apply { text = "回收站"; setOnClickListener { showTrash() } }, LayoutParams(0, dp(48), 1f))
-            addView(Button(context).apply { text = "记一笔"; NativeUi.styleButton(this, primary = true); setOnClickListener { showEditor(null) } }, LayoutParams(0, dp(48), 1f))
+            addView(MaterialButton(context).apply { text = "回收站"; insetTop = 0; insetBottom = 0; setOnClickListener { showTrash() } }, LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) })
+            addView(MaterialButton(context).apply { text = "记一笔"; insetTop = 0; insetBottom = 0; tag = "primary"; NativeUi.styleButton(this, primary = true); setOnClickListener { showEditor(null) } }, LayoutParams(0, dp(48), 1f).apply { marginStart = dp(5) })
         })
         addView(sourceFilter)
         addView(LinearLayout(context).apply {
@@ -49,7 +50,7 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
             search.hint = "搜索商户、备注"
             search.isSingleLine = true
             addView(search, LayoutParams(0, dp(52), 1f))
-            addView(Button(context).apply { text = "搜索"; minHeight = dp(48); setOnClickListener { reload() } })
+            addView(MaterialButton(context).apply { text = "搜索"; insetTop = 0; insetBottom = 0; minHeight = dp(48); setOnClickListener { reload() } })
         })
         list.orientation = VERTICAL
         addView(list)

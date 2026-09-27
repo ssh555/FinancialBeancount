@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.ArrayAdapter
 import android.widget.TextView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -256,7 +257,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         setPadding(dp(2), dp(22), 0, dp(8))
     }
 
-    private fun action(label: String, click: () -> Unit) = Button(context).apply {
+    private fun action(label: String, click: () -> Unit) = MaterialCardView(context).apply {
         val descriptions = mapOf(
             "选择一个文件" to "导入一份微信、支付宝或银行账单",
             "选择多个文件" to "一次加入多份账单并逐项查看结果",
@@ -270,12 +271,23 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
             "检查更新" to "仅在点击后连接 GitHub 检查新版",
             "删除所有数据" to "永久清空本设备账本，不删除应用",
         )
-        text = descriptions[label]?.let { "$label  ›\n$it" } ?: label
-        gravity = Gravity.START or Gravity.CENTER_VERTICAL
-        minHeight = if (descriptions.containsKey(label)) dp(66) else dp(48)
-        setPadding(dp(14), dp(8), dp(14), dp(8))
+        radius = dp(16).toFloat()
+        cardElevation = dp(1).toFloat()
+        strokeWidth = dp(1)
+        setStrokeColor(NativeUi.line)
+        setCardBackgroundColor(NativeUi.card)
+        isClickable = true
+        isFocusable = true
         contentDescription = label
         setOnClickListener { click() }
+        addView(TextView(context).apply {
+            text = descriptions[label]?.let { "$label  ›\n$it" } ?: label
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            textSize = 15f
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            if (descriptions.containsKey(label)) minimumHeight = dp(72)
+        })
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(5), 0, dp(5)) }
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
