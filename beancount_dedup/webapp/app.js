@@ -17,17 +17,37 @@ const money = value => new Intl.NumberFormat("zh-CN", { style: "currency", curre
 const text = value => String(value ?? "");
 const escapeHtml = value => text(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
 const merchant = tx => tx?.merchant || tx?.counterparty || "未命名交易";
+const nativeRequests = new Map();
+
+globalThis.resolveNativeRequest = (requestId, responseJson) => {
+  const pending = nativeRequests.get(requestId);
+  if (!pending) return;
+  nativeRequests.delete(requestId);
+  pending.resolve(JSON.parse(responseJson));
+};
+
+function nativeRequest(payload) {
+  const requestId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  return new Promise((resolve, reject) => {
+    nativeRequests.set(requestId, { resolve, reject });
+    try { globalThis.FinancialBeancountNative.requestAsync(requestId, JSON.stringify(payload)); }
+    catch (error) { nativeRequests.delete(requestId); reject(error); }
+  });
+}
 
 function apiBase() { return sessionStorage.getItem("financial-beancount-api") || ""; }
 function actor() { return localStorage.getItem("financial-beancount-actor") || "local-user"; }
 
 async function request(path, options = {}) {
-  if (globalThis.FinancialBeancountNative?.request) {
-    const nativeResponse = JSON.parse(globalThis.FinancialBeancountNative.request(JSON.stringify({
+  if (globalThis.FinancialBeancountNative?.requestAsync || globalThis.FinancialBeancountNative?.request) {
+    const payload = {
       method: options.method || "GET",
       target: path,
       ...(options.body ? { body: JSON.parse(options.body) } : {}),
-    })));
+    };
+    const nativeResponse = globalThis.FinancialBeancountNative.requestAsync
+      ? await nativeRequest(payload)
+      : JSON.parse(globalThis.FinancialBeancountNative.request(JSON.stringify(payload)));
     if (nativeResponse.status < 200 || nativeResponse.status >= 300) {
       throw new Error(nativeResponse.body?.error?.message || `请求失败 (${nativeResponse.status})`);
     }
@@ -283,6 +303,10 @@ function loadSettings() {
   $("#api-token").value = sessionStorage.getItem("financial-beancount-token") || "";
   $("#review-actor").value = actor();
   $("#archive-import-button").classList.toggle("hidden", !globalThis.FinancialBeancountNative?.pickPortableArchive);
+  if (globalThis.FinancialBeancountNative) {
+    $("#settings-title").textContent = "设置";
+    $("#settings-form button[type='submit']").textContent = "保存";
+  }
 }
 
 function showCreateForm() {
@@ -612,6 +636,7 @@ $("#detail-dialog").addEventListener("click", async event => {
   } catch (error) { toast(error.message); }
 });
 
+if (globalThis.FinancialBeancountNative) document.documentElement.classList.add("native-app");
 setStatisticsPeriod("month", false);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js").catch(() => {});
 request("/api/v1/health").then(() => loadOverview()).catch(error => { setConnection(false); toast(error.message); loadOverview(); });

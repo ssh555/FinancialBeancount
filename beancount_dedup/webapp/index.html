@@ -90,10 +90,10 @@
     <section id="settings-view" class="view" aria-labelledby="settings-title">
       <div class="section-heading"><div><p class="eyebrow">设备设置</p><h2 id="settings-title">连接</h2></div></div>
       <form id="settings-form" class="card settings-form">
-        <label>API 地址<input id="api-base" inputmode="url" placeholder="留空使用当前地址"></label>
-        <label>访问令牌<input id="api-token" type="password" autocomplete="off" placeholder="仅跨设备访问时需要"></label>
+        <label class="network-setting">API 地址<input id="api-base" inputmode="url" placeholder="留空使用当前地址"></label>
+        <label class="network-setting">访问令牌<input id="api-token" type="password" autocomplete="off" placeholder="仅跨设备访问时需要"></label>
         <label>审核人<input id="review-actor" required value="local-user"></label>
-        <p class="muted">令牌仅保存在当前浏览器会话，不写入账本或离线缓存。</p>
+        <p class="muted network-setting">令牌仅保存在当前浏览器会话，不写入账本或离线缓存。</p>
         <button class="button primary" type="submit">保存并测试</button>
       </form>
       <section class="card settings-form">

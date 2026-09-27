@@ -32,6 +32,8 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert "webView.webChromeClient = LocalChromeClient()" in activity
     assert "override fun onJsConfirm(" in activity
     assert 'setPositiveButton("继续")' in activity
+    assert "fun requestAsync(" in activity
+    assert "Executors.newFixedThreadPool(3)" in activity
     assert "androidx.documentfile:documentfile" in build
 
 
@@ -53,6 +55,8 @@ def test_web_client_uses_native_bridge_before_http_fetch() -> None:
     assert 'setStatisticsPeriod("month", false)' in script
     assert 'period === "week"' in script
     assert "useCustomStatisticsPeriod" in script
+    assert "await nativeRequest(payload)" in script
+    assert 'classList.add("native-app")' in script
 
 
 def test_android_debug_workflow_is_manual_and_uploads_only_debug_apk() -> None:

@@ -23,6 +23,7 @@ import com.chaquo.python.android.AndroidPlatform
 import java.io.ByteArrayInputStream
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 private const val APP_ORIGIN = "https://appassets.androidplatform.net"
@@ -36,6 +37,7 @@ private data class PendingExport(val filename: String, val mimeType: String, val
 class MainActivity : ComponentActivity() {
     private lateinit var bridge: PyObject
     private lateinit var webView: WebView
+    private val requestExecutor = Executors.newFixedThreadPool(3)
     @Volatile private var pendingExport: PendingExport? = null
 
     private val singleFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -84,6 +86,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        requestExecutor.shutdownNow()
         webView.removeJavascriptInterface("FinancialBeancountNative")
         webView.destroy()
         super.onDestroy()
@@ -94,6 +97,32 @@ class MainActivity : ComponentActivity() {
         fun request(requestJson: String): String {
             val database = getDatabasePath("ledger.sqlite3").absolutePath
             return bridge.callAttr("dispatch", database, requestJson).toString()
+        }
+
+        @JavascriptInterface
+        fun requestAsync(requestId: String, requestJson: String) {
+            requestExecutor.execute {
+                val response = try {
+                    request(requestJson)
+                } catch (error: Exception) {
+                    JSONObject()
+                        .put("status", 500)
+                        .put(
+                            "body",
+                            JSONObject().put(
+                                "error",
+                                JSONObject().put("message", error.message ?: "本地账本请求失败"),
+                            ),
+                        )
+                        .toString()
+                }
+                webView.post {
+                    webView.evaluateJavascript(
+                        "globalThis.resolveNativeRequest(${JSONObject.quote(requestId)}, ${JSONObject.quote(response)})",
+                        null,
+                    )
+                }
+            }
         }
 
         @JavascriptInterface
