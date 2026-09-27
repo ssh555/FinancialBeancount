@@ -29,6 +29,9 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert "fun saveDocument(" in activity
     assert "fun pickPortableArchive()" in activity
     assert "bridge.callAttr(" in activity and '"restore_archive"' in activity
+    assert "webView.webChromeClient = LocalChromeClient()" in activity
+    assert "override fun onJsConfirm(" in activity
+    assert 'setPositiveButton("继续")' in activity
     assert "androidx.documentfile:documentfile" in build
 
 

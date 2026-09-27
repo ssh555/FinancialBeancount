@@ -1,11 +1,14 @@
 package io.github.ssh555.financialbeancount
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
 import android.webkit.JavascriptInterface
+import android.webkit.JsResult
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -75,6 +78,7 @@ class MainActivity : ComponentActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
         webView.addJavascriptInterface(LedgerJavascriptBridge(), "FinancialBeancountNative")
+        webView.webChromeClient = LocalChromeClient()
         webView.webViewClient = LocalOnlyClient()
         webView.loadUrl("$APP_ORIGIN/index.html")
     }
@@ -252,6 +256,23 @@ class MainActivity : ComponentActivity() {
                 "globalThis.acceptNativeImportFiles(${JSONObject.quote(payload)})",
                 null,
             )
+        }
+    }
+
+    private inner class LocalChromeClient : WebChromeClient() {
+        override fun onJsConfirm(
+            view: WebView,
+            url: String,
+            message: String,
+            result: JsResult,
+        ): Boolean {
+            AlertDialog.Builder(this@MainActivity)
+                .setMessage(message)
+                .setPositiveButton("继续") { _, _ -> result.confirm() }
+                .setNegativeButton("取消") { _, _ -> result.cancel() }
+                .setOnCancelListener { result.cancel() }
+                .show()
+            return true
         }
     }
 
