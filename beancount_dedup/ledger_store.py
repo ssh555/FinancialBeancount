@@ -27,6 +27,30 @@ SCHEMA_VERSION = 10
 MINIMUM_UPGRADABLE_SCHEMA_VERSION = 8
 
 
+def _source_filter_clause(
+    source_filters: list[tuple[str, str | None]] | None,
+) -> tuple[str, list[object]]:
+    if not source_filters:
+        return "", []
+    options: list[str] = []
+    parameters: list[object] = []
+    for source, account in source_filters:
+        option = "raw.source = ?"
+        parameters.append(source)
+        if account is not None:
+            option += " AND raw.source_account = ?"
+            parameters.append(account)
+        options.append(f"({option})")
+    return (
+        "AND EXISTS (SELECT 1 FROM source_record_links AS filter_links "
+        "JOIN raw_transactions AS raw ON raw.raw_id = filter_links.raw_id "
+        "WHERE filter_links.canonical_id = canonical_transactions.canonical_id AND ("
+        + " OR ".join(options)
+        + "))",
+        parameters,
+    )
+
+
 class LedgerMigrationError(RuntimeError):
     """Raised when a ledger cannot be safely opened or upgraded."""
 
@@ -931,19 +955,42 @@ class LedgerStore:
         canonical.source_links = [self._link_from_joined_row(link_row) for link_row in link_rows]
         return canonical
 
-    def list_canonical(self) -> list[CanonicalTransaction]:
+    def list_canonical(
+        self, source_filters: list[tuple[str, str | None]] | None = None
+    ) -> list[CanonicalTransaction]:
         """Return one row per economic transaction for list and statistics views."""
+
+        source_clause, parameters = _source_filter_clause(source_filters)
+        rows = self.connection.execute(
+            f"""
+            SELECT canonical_transactions.* FROM canonical_transactions
+            LEFT JOIN canonical_deletions AS deletions
+              ON deletions.canonical_id = canonical_transactions.canonical_id
+            WHERE deletions.canonical_id IS NULL
+              {source_clause}
+            ORDER BY booking_date DESC, transaction_time DESC
+            """,
+            parameters,
+        ).fetchall()
+        return [self._canonical_from_row(row) for row in rows]
+
+    def list_source_facets(self) -> list[dict[str, object]]:
+        """Return selectable platform/account sources and unique-transaction counts."""
 
         rows = self.connection.execute(
             """
-            SELECT canonical.* FROM canonical_transactions AS canonical
+            SELECT raw.source, raw.source_account,
+                   COUNT(DISTINCT links.canonical_id) AS transaction_count
+            FROM source_record_links AS links
+            JOIN raw_transactions AS raw ON raw.raw_id = links.raw_id
             LEFT JOIN canonical_deletions AS deletions
-              ON deletions.canonical_id = canonical.canonical_id
+              ON deletions.canonical_id = links.canonical_id
             WHERE deletions.canonical_id IS NULL
-            ORDER BY booking_date DESC, transaction_time DESC
+            GROUP BY raw.source, raw.source_account
+            ORDER BY raw.source, raw.source_account
             """
         ).fetchall()
-        return [self._canonical_from_row(row) for row in rows]
+        return [dict(row) for row in rows]
 
     def list_canonical_page(
         self,
@@ -955,6 +1002,7 @@ class LedgerStore:
         direction: str | None = None,
         category: str | None = None,
         search: str | None = None,
+        source_filters: list[tuple[str, str | None]] | None = None,
     ) -> tuple[list[CanonicalTransaction], int]:
         """Return a filtered page without loading the complete ledger into memory."""
 
@@ -965,6 +1013,10 @@ class LedgerStore:
             "WHERE deletions.canonical_id = canonical_transactions.canonical_id)"
         ]
         parameters: list[object] = []
+        source_clause, source_parameters = _source_filter_clause(source_filters)
+        if source_clause:
+            clauses.append(source_clause.strip().removeprefix("AND "))
+            parameters.extend(source_parameters)
         if date_from:
             clauses.append("booking_date >= ?")
             parameters.append(date_from.isoformat())

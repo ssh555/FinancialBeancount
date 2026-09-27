@@ -1,4 +1,4 @@
-const CACHE = "financial-beancount-shell-v4";
+const CACHE = "financial-beancount-shell-v5";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.webmanifest", "/icon.svg", "/maskable-icon.svg"];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL))));
 self.addEventListener("activate", event => event.waitUntil(

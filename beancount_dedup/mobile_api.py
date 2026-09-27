@@ -122,6 +122,8 @@ class MobileLedgerApi:
                 return self._transaction_route(method, path, body or {})
             if method == "GET" and path == "/api/v1/import-formats":
                 return self._ok(list(self.statement_importer.supported_formats()))
+            if method == "GET" and path == "/api/v1/sources":
+                return self._ok(self.store.list_source_facets())
             if method == "POST" and path == "/api/v1/imports":
                 return self._import_statement(body or {})
             if method == "GET" and path == "/api/v1/imports":
@@ -132,7 +134,9 @@ class MobileLedgerApi:
                 return self._export_portable_archive()
             if method == "GET" and path == "/api/v1/statistics/summary":
                 report = self.statistics.summarize(
-                    _optional_date(query, "date_from"), _optional_date(query, "date_to")
+                    _optional_date(query, "date_from"),
+                    _optional_date(query, "date_to"),
+                    _source_filters(query),
                 )
                 return self._ok(report.to_dict())
             if method == "GET" and path == "/api/v1/statistics/account-balances":
@@ -144,6 +148,7 @@ class MobileLedgerApi:
                         period,
                         _optional_date(query, "date_from"),
                         _optional_date(query, "date_to"),
+                        _source_filters(query),
                     )
                 )
             if method == "GET" and path == "/api/v1/review/candidates":
@@ -193,6 +198,7 @@ class MobileLedgerApi:
             direction=_optional_text(query, "direction"),
             category=_optional_text(query, "category"),
             search=_optional_text(query, "search"),
+            source_filters=_source_filters(query),
         )
         return self._ok(
             [_canonical_summary(item, self.store) for item in selected],
@@ -674,6 +680,18 @@ def _pagination(query: dict[str, list[str]]) -> tuple[int, int]:
 def _optional_text(query: dict[str, list[str]], name: str) -> str | None:
     value = query.get(name, [""])[0].strip()
     return value or None
+
+
+def _source_filters(query: dict[str, list[str]]) -> list[tuple[str, str | None]]:
+    selected: list[tuple[str, str | None]] = []
+    for value in query.get("source", []):
+        source, separator, account = value.strip().partition("::")
+        if not source or (separator and not account):
+            raise ValueError("source must be a platform or platform::account")
+        item = (source, account if separator else None)
+        if item not in selected:
+            selected.append(item)
+    return selected
 
 
 def _optional_date(query: dict[str, list[str]], name: str) -> date | None:

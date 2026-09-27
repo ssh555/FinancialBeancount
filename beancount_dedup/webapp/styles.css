@@ -86,6 +86,13 @@ input, select { width: 100%; min-height: 43px; padding: 9px 11px; border-radius:
 .review-actions { display: flex; gap: 8px; margin-top: 12px; }
 .review-actions .button { flex: 1; min-height: 38px; padding: 7px; font-size: .82rem; }
 .settings-form { display: grid; gap: 16px; max-width: 600px; }
+.source-filter { margin-bottom: 14px; }
+.source-filter summary { cursor: pointer; font-weight: 750; }
+.source-filter summary .muted { margin-left: 8px; font-weight: 400; }
+.source-filter-options { display: grid; gap: 10px; margin: 14px 0; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.source-filter-options fieldset { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 12px; }
+.source-filter-options label { display: flex; gap: 8px; align-items: center; }
+.source-filter-options small { color: var(--muted); }
 .edit-form { display: grid; gap: 12px; margin-top: 22px; padding: 15px; border-radius: 14px; background: var(--green-soft); }
 .import-pickers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .file-picker { display: grid; place-items: center; text-align: center; color: var(--green); }

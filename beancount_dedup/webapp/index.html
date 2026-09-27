@@ -22,6 +22,11 @@
   </header>
 
   <main id="app" tabindex="-1">
+    <details class="card source-filter">
+      <summary>来源筛选 <span id="source-filter-label" class="muted">全部平台与账户</span></summary>
+      <div id="source-filter-options" class="source-filter-options"></div>
+      <div class="heading-actions"><button id="source-filter-clear" class="button secondary" type="button">清除</button><button id="source-filter-apply" class="button primary" type="button">应用筛选</button></div>
+    </details>
     <section id="overview-view" class="view active" aria-labelledby="overview-title">
       <div class="section-heading">
         <div><p class="eyebrow">概览</p><h2 id="overview-title">财务快照</h2></div>

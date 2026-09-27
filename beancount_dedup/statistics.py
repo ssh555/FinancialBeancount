@@ -79,13 +79,16 @@ class StatisticsService:
         self.store = store
 
     def summarize(
-        self, date_from: date | None = None, date_to: date | None = None
+        self,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        source_filters: list[tuple[str, str | None]] | None = None,
     ) -> StatisticsReport:
         if date_from and date_to and date_from > date_to:
             raise ValueError("date_from must not be after date_to")
         transactions = [
             item
-            for item in self.store.list_canonical()
+            for item in self.store.list_canonical(source_filters)
             if _in_range(item.booking_date, date_from, date_to)
         ]
         pending_ids = {
@@ -117,7 +120,7 @@ class StatisticsService:
 
         refund_rows = self.store.connection.execute(
             """
-            SELECT relationships.amount, original.category
+            SELECT relationships.amount, original.category, refund.canonical_id
             FROM transaction_relationships AS relationships
             JOIN canonical_transactions AS refund
               ON refund.canonical_id = relationships.from_canonical_id
@@ -136,6 +139,8 @@ class StatisticsService:
             ),
         ).fetchall()
 
+        selected_ids = {item.canonical_id for item in transactions}
+        refund_rows = [row for row in refund_rows if row["canonical_id"] in selected_ids]
         category_expenses: dict[str, Decimal] = {}
         for item in expenses:
             category = item.category or "未分类"
@@ -173,7 +178,11 @@ class StatisticsService:
         )
 
     def timeline(
-        self, period: str, date_from: date | None = None, date_to: date | None = None
+        self,
+        period: str,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        source_filters: list[tuple[str, str | None]] | None = None,
     ) -> list[dict[str, Any]]:
         """Aggregate reportable canonical transactions into calendar periods."""
         if period not in {"day", "week", "month", "year"}:
@@ -182,7 +191,7 @@ class StatisticsService:
             raise ValueError("date_from must not be after date_to")
         transactions = [
             item
-            for item in self.store.list_canonical()
+            for item in self.store.list_canonical(source_filters)
             if _in_range(item.booking_date, date_from, date_to)
         ]
         pending_ids = {

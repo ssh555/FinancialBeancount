@@ -9,6 +9,7 @@ const state = {
   importFormats: [],
   importQueue: [],
   timelinePeriod: "month",
+  selectedSources: [],
 };
 
 const $ = selector => document.querySelector(selector);
@@ -37,6 +38,25 @@ function nativeRequest(payload) {
 
 function apiBase() { return sessionStorage.getItem("financial-beancount-api") || ""; }
 function actor() { return localStorage.getItem("financial-beancount-actor") || "local-user"; }
+
+function appendSources(params) {
+  state.selectedSources.forEach(value => params.append("source", value));
+  return params;
+}
+
+async function loadSourceFilters() {
+  const { data } = await request("/api/v1/sources");
+  const names = { alipay: "支付宝", wechat: "微信", bank: "银行", unionpay: "云闪付" };
+  const groups = data.reduce((result, item) => {
+    (result[item.source] ||= []).push(item);
+    return result;
+  }, {});
+  $("#source-filter-options").innerHTML = Object.entries(groups).map(([source, items]) => `
+    <fieldset><legend>${escapeHtml(names[source] || source)}</legend>
+      <label><input type="checkbox" value="${escapeHtml(source)}">全部 ${escapeHtml(names[source] || source)}</label>
+      ${items.map(item => `<label><input type="checkbox" value="${escapeHtml(`${source}::${item.source_account}`)}">${escapeHtml(item.source_account)} <small>${item.transaction_count} 笔</small></label>`).join("")}
+    </fieldset>`).join("") || empty("暂无可筛选来源");
+}
 
 async function request(path, options = {}) {
   if (globalThis.FinancialBeancountNative?.requestAsync || globalThis.FinancialBeancountNative?.request) {
@@ -136,14 +156,14 @@ async function loadOverview() {
   $("#category-list").innerHTML = '<div class="skeleton"></div>';
   $("#timeline-list").innerHTML = '<div class="skeleton"></div>';
   try {
-    const query = dateQuery();
+    const query = appendSources(new URLSearchParams(dateQuery())).toString();
     const [{ data }, timeline, balances] = await Promise.all([
       request(`/api/v1/statistics/summary?${query}`),
       request(`/api/v1/statistics/timeline?period=${state.timelinePeriod}&${query}`),
       request("/api/v1/statistics/account-balances"),
     ]);
     const cards = [
-      ["账户余额", money(balances.data.known_balance), `${balances.data.as_of || "暂无日期"} · 可识别账户`, "featured"],
+      ["账户余额", money(balances.data.known_balance), `${balances.data.as_of || "暂无日期"} · 不随来源筛选`, "featured"],
       ["收支差额", money(data.net_cash_flow), "收入 + 退款 − 支出（非账户余额）", "featured"],
       ["支出", money(data.gross_expense), `${data.expense_count} 笔`, ""],
       ["收入", money(data.ordinary_income), `${data.income_count} 笔`, ""],
@@ -172,6 +192,7 @@ async function loadTransactions(reset = false) {
   const list = $("#transaction-list");
   if (reset) { state.transactionPage = 1; state.transactions = []; skeleton(list, 4); }
   const params = new URLSearchParams({ page: state.transactionPage, page_size: 30 });
+  appendSources(params);
   const query = $("#transaction-search").value.trim();
   if (query) params.set("search", query);
   try {
@@ -570,6 +591,17 @@ $("#archive-import-button").addEventListener("click", restorePortableArchive);
 $("#import-history-button").addEventListener("click", showImportHistory);
 $("#load-more").addEventListener("click", () => { state.transactionPage += 1; loadTransactions(false); });
 $("#apply-dates").addEventListener("click", loadOverview);
+$("#source-filter-apply").addEventListener("click", () => {
+  state.selectedSources = $$("#source-filter-options input:checked").map(input => input.value);
+  $("#source-filter-label").textContent = state.selectedSources.length ? `已选 ${state.selectedSources.length} 项` : "全部平台与账户";
+  loadOverview(); loadTransactions(true);
+});
+$("#source-filter-clear").addEventListener("click", () => {
+  $$("#source-filter-options input").forEach(input => { input.checked = false; });
+  state.selectedSources = [];
+  $("#source-filter-label").textContent = "全部平台与账户";
+  loadOverview(); loadTransactions(true);
+});
 $$('[data-statistics-period]').forEach(button => button.addEventListener("click", () => setStatisticsPeriod(button.dataset.statisticsPeriod)));
 $("#date-from").addEventListener("change", useCustomStatisticsPeriod);
 $("#date-to").addEventListener("change", useCustomStatisticsPeriod);
@@ -643,4 +675,4 @@ $("#detail-dialog").addEventListener("click", async event => {
 if (globalThis.FinancialBeancountNative) document.documentElement.classList.add("native-app");
 setStatisticsPeriod("all", false);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js").catch(() => {});
-request("/api/v1/health").then(() => loadOverview()).catch(error => { setConnection(false); toast(error.message); loadOverview(); });
+request("/api/v1/health").then(() => Promise.all([loadSourceFilters(), loadOverview()])).catch(error => { setConnection(false); toast(error.message); loadOverview(); });

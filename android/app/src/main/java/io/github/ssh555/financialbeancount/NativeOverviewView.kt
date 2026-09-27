@@ -24,11 +24,13 @@ class NativeOverviewView(
     private val progress = ProgressBar(context)
     private var range = "all"
     private var grouping = "month"
+    private val sourceFilter = SourceFilterButton(context, client) { refresh() }
 
     init {
         orientation = VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(24))
         addView(title("财务概览", 26f))
+        addView(sourceFilter)
         addView(periodChooser(listOf("今日" to "day", "本周" to "week", "本月" to "month", "本年" to "year", "全部" to "all")) { selected ->
             range = selected
             refresh()
@@ -54,11 +56,11 @@ class NativeOverviewView(
 
     fun refresh() {
         progress.visibility = View.VISIBLE
-        val query = rangeQuery()
+        val query = listOf(rangeQuery(), sourceFilter.query()).filter(String::isNotBlank).joinToString("&")
         client.request("GET", "/api/v1/statistics/account-balances") { result ->
             result.onSuccess { response ->
                 val data = response.getJSONObject("body").getJSONObject("data")
-                accountBalance.text = "账户余额 ${money(data.getString("known_balance"))}\n截至 ${data.optString("as_of", "暂无日期")} · 可识别银行账户及内部产品"
+                accountBalance.text = "账户余额 ${money(data.getString("known_balance"))}\n截至 ${data.optString("as_of", "暂无日期")} · 不随来源筛选"
             }.onFailure { accountBalance.text = it.message ?: "账户余额加载失败" }
         }
         client.request("GET", "/api/v1/statistics/summary?$query") { result ->

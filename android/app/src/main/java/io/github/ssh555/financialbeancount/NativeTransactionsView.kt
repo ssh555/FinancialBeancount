@@ -25,6 +25,7 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
     private val more = Button(context)
     private var page = 1
     private var loaded = 0
+    private val sourceFilter = SourceFilterButton(context, client) { reload() }
 
     init {
         orientation = VERTICAL
@@ -36,6 +37,7 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
             addView(Button(context).apply { text = "回收站"; setOnClickListener { showTrash() } })
             addView(Button(context).apply { text = "记一笔"; setOnClickListener { showEditor(null) } })
         })
+        addView(sourceFilter)
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             search.hint = "搜索商户、备注"
@@ -60,7 +62,8 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
         progress.visibility = View.VISIBLE
         more.isEnabled = false
         val query = URLEncoder.encode(search.text.toString().trim(), "UTF-8")
-        client.request("GET", "/api/v1/transactions?page=$page&page_size=30&search=$query") { result ->
+        val sources = sourceFilter.query().let { if (it.isBlank()) "" else "&$it" }
+        client.request("GET", "/api/v1/transactions?page=$page&page_size=30&search=$query$sources") { result ->
             progress.visibility = View.GONE
             result.onSuccess { response ->
                 val body = response.getJSONObject("body")

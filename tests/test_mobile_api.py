@@ -142,6 +142,7 @@ def test_transaction_list_is_compact_but_detail_contains_all_sources(store):
         amount="-20.00",
         direction="expense",
         merchant="高德打车",
+        tx_type=TransactionType.EXPENSE,
     )
     for item in (payment, bank):
         canonical.add_source(
@@ -155,12 +156,23 @@ def test_transaction_list_is_compact_but_detail_contains_all_sources(store):
 
     listing = api.dispatch("GET", "/api/v1/transactions?page=1&page_size=20")
     detail = api.dispatch("GET", f"/api/v1/transactions/{canonical.canonical_id}")
+    sources = api.dispatch("GET", "/api/v1/sources")
+    bank_only = api.dispatch("GET", "/api/v1/transactions?source=bank::account-bank")
+    either_source = api.dispatch(
+        "GET", "/api/v1/statistics/summary?source=bank::account-bank&source=alipay"
+    )
 
     assert listing.status == 200
     assert listing.body["data"][0]["source_count"] == 2
     assert "sources" not in listing.body["data"][0]
     assert len(detail.body["data"]["sources"]) == 2
     assert detail.body["data"]["sources"][0]["raw_transaction"]["original_row"]
+    assert {(item["source"], item["source_account"]) for item in sources.body["data"]} == {
+        ("alipay", "account-payment"),
+        ("bank", "account-bank"),
+    }
+    assert bank_only.body["meta"]["total"] == 1
+    assert either_source.body["data"]["gross_expense"] == "20.00"
 
 
 def test_transaction_list_supports_generic_filters(store):

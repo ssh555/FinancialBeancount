@@ -129,6 +129,13 @@ def test_native_android_transactions_are_paginated_and_searchable() -> None:
     assert "/api/v1/deleted-transactions" in source
     assert '}/restore"' in source
 
+    source_filter = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/SourceFilterButton.kt"
+    ).read_text(encoding="utf-8")
+    assert "/api/v1/sources" in source_filter
+    assert "setMultiChoiceItems" in source_filter
+    assert '"source=${URLEncoder.encode(it, "UTF-8")}"' in source_filter
+
 
 def test_native_android_review_covers_all_queues_and_decisions() -> None:
     source = (
