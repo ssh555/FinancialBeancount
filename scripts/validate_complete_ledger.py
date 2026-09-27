@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from beancount_dedup.account_balances import AccountBalanceService
 from beancount_dedup.ledger_store import LedgerStore
 from beancount_dedup.statistics import StatisticsService
 
@@ -19,6 +20,7 @@ def validate_database(database: Path) -> dict[str, Any]:
             raise ValueError("账本没有唯一交易")
         statistics = StatisticsService(store)
         summary = statistics.summarize()
+        account_balance = AccountBalanceService(store).summarize()
         yearly = statistics.timeline("year")
         checks = {
             "gross_expense_matches_years": _sum(yearly, "gross_expense") == summary.gross_expense,
@@ -27,6 +29,9 @@ def validate_database(database: Path) -> dict[str, Any]:
             "refunds_match_years": _sum(yearly, "refunds") == summary.refunds,
             "net_cash_flow_formula": summary.net_cash_flow
             == summary.ordinary_income + summary.refunds - summary.gross_expense,
+            "account_balance_components": Decimal(account_balance["known_balance"])
+            == Decimal(account_balance["cash_total"])
+            + Decimal(account_balance["internal_product_total"]),
         }
         report = {
             "success": all(checks.values()),
@@ -40,6 +45,7 @@ def validate_database(database: Path) -> dict[str, Any]:
             "unclassified_excluded_count": summary.unclassified_excluded_count,
             "pending_review_excluded_count": summary.pending_review_excluded_count,
             "summary": summary.to_dict(),
+            "account_balance": account_balance,
             "yearly": yearly,
             "checks": checks,
         }

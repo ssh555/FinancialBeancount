@@ -19,6 +19,7 @@ class NativeOverviewView(
     private val client: NativeLedgerClient,
 ) : LinearLayout(context) {
     private val summary = TextView(context)
+    private val accountBalance = TextView(context)
     private val timeline = LinearLayout(context)
     private val progress = ProgressBar(context)
     private var range = "all"
@@ -32,6 +33,10 @@ class NativeOverviewView(
             range = selected
             refresh()
         })
+        accountBalance.setPadding(0, dp(16), 0, dp(8))
+        accountBalance.textSize = 19f
+        accountBalance.setTypeface(accountBalance.typeface, Typeface.BOLD)
+        addView(accountBalance)
         summary.setPadding(0, dp(16), 0, dp(16))
         summary.textSize = 17f
         addView(summary)
@@ -50,6 +55,12 @@ class NativeOverviewView(
     fun refresh() {
         progress.visibility = View.VISIBLE
         val query = rangeQuery()
+        client.request("GET", "/api/v1/statistics/account-balances") { result ->
+            result.onSuccess { response ->
+                val data = response.getJSONObject("body").getJSONObject("data")
+                accountBalance.text = "账户余额 ${money(data.getString("known_balance"))}\n截至 ${data.optString("as_of", "暂无日期")} · 可识别银行账户及内部产品"
+            }.onFailure { accountBalance.text = it.message ?: "账户余额加载失败" }
+        }
         client.request("GET", "/api/v1/statistics/summary?$query") { result ->
             result.onSuccess { response ->
                 val data = response.getJSONObject("body").getJSONObject("data")

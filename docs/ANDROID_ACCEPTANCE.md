@@ -44,6 +44,13 @@ python scripts/validate_complete_ledger.py \
   --output /path/to/complete-ledger-validation.json
 ```
 
+In the validation report, `summary.net_cash_flow` is cumulative cash flow for the ledger period,
+not a current balance. Use `account_balance.known_balance` for the known balance backed by the
+latest raw bank cash balances plus clearly identifiable internal bank products (currently CMB
+Zhaochaobao and ICBC Tiantianying). External fund platforms such as Tiantian Fund and payment
+accounts without statement balances are excluded. During acceptance, also inspect
+`cash_accounts`, `internal_products`, and their as-of dates.
+
 Then run the primary mobile read-path baseline. Do not proceed to device acceptance if any item
 exceeds its reported limit:
 
@@ -60,7 +67,9 @@ python scripts/benchmark_mobile.py \
 2. Open **Settings → Data and migration → Restore complete archive**, acknowledge the replacement
    warning, and select only the ZIP above.
 3. Confirm the restore succeeds. Spot-check dates, amounts, merchants, categories, source counts and
-   review queues, including searches for at least three known transactions.
+   review queues, including searches for at least three known transactions. Confirm that the
+   Overview account balance agrees with the desktop validation report and is not confused with
+   cumulative net cash flow.
 4. Create one test transaction, edit it, soft-delete it, and restore it from Trash.
 5. Export CSV, JSON and a complete archive. Confirm the system save UI accepts a chosen destination
    and each resulting file can be opened again.

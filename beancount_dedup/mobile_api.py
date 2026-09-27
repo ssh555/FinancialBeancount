@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import parse_qs, urlsplit
 
+from .account_balances import AccountBalanceService
 from .candidate_review import CandidateReviewEvent, CandidateReviewGroup, CandidateReviewService
 from .ledger_models import CanonicalTransaction, RawTransaction, ReviewStatus
 from .ledger_store import SCHEMA_VERSION, LedgerStore
@@ -88,6 +89,7 @@ class MobileLedgerApi:
         self.refund_review = RefundRelationshipService(store)
         self.classification_review = TransactionClassificationService(store)
         self.statistics = StatisticsService(store)
+        self.account_balances = AccountBalanceService(store)
         self.statement_importer = StatementImporter(store)
 
     def dispatch(  # noqa: PLR0911
@@ -133,6 +135,8 @@ class MobileLedgerApi:
                     _optional_date(query, "date_from"), _optional_date(query, "date_to")
                 )
                 return self._ok(report.to_dict())
+            if method == "GET" and path == "/api/v1/statistics/account-balances":
+                return self._ok(self.account_balances.summarize())
             if method == "GET" and path == "/api/v1/statistics/timeline":
                 period = query.get("period", ["month"])[0]
                 return self._ok(

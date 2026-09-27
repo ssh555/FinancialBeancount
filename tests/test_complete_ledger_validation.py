@@ -39,3 +39,5 @@ def test_complete_ledger_validation_checks_period_conservation(tmp_path: Path) -
     assert report["canonical_count"] == 2
     assert report["checks"]["gross_expense_matches_years"] is True
     assert report["checks"]["ordinary_income_matches_years"] is True
+    assert report["checks"]["account_balance_components"] is True
+    assert report["account_balance"]["known_balance"] == "0"

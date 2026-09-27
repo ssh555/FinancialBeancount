@@ -137,11 +137,13 @@ async function loadOverview() {
   $("#timeline-list").innerHTML = '<div class="skeleton"></div>';
   try {
     const query = dateQuery();
-    const [{ data }, timeline] = await Promise.all([
+    const [{ data }, timeline, balances] = await Promise.all([
       request(`/api/v1/statistics/summary?${query}`),
       request(`/api/v1/statistics/timeline?period=${state.timelinePeriod}&${query}`),
+      request("/api/v1/statistics/account-balances"),
     ]);
     const cards = [
+      ["账户余额", money(balances.data.known_balance), `${balances.data.as_of || "暂无日期"} · 可识别账户`, "featured"],
       ["收支差额", money(data.net_cash_flow), "收入 + 退款 − 支出（非账户余额）", "featured"],
       ["支出", money(data.gross_expense), `${data.expense_count} 笔`, ""],
       ["收入", money(data.ordinary_income), `${data.income_count} 笔`, ""],

@@ -539,3 +539,7 @@ def test_statistics_summary_api_uses_date_filters(store):
         "2026-04-01",
         "2026-03-01",
     ]
+
+    balances = MobileLedgerApi(store).dispatch("GET", "/api/v1/statistics/account-balances")
+    assert balances.status == 200
+    assert balances.body["data"]["known_balance"] == "0"
