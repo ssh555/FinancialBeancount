@@ -1,7 +1,23 @@
-name: Android debug build
+name: Android build
 
 on:
   workflow_dispatch:
+    inputs:
+      release_build:
+        description: Build a publisher-signed APK suitable for in-place upgrades
+        required: true
+        type: boolean
+        default: false
+      version_name:
+        description: Android version name (MAJOR.MINOR.PATCH)
+        required: true
+        type: string
+        default: "0.2.0"
+      version_code:
+        description: Strictly increasing positive Android version code
+        required: true
+        type: number
+        default: 1
 
 permissions:
   contents: read
@@ -18,11 +34,63 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
-      - name: Build minimal debug APK
+      - name: Validate requested version
+        shell: bash
+        run: |
+          [[ "${{ inputs.version_name }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "${{ inputs.version_code }}" =~ ^[1-9][0-9]*$ ]]
+      - name: Build debug APK
+        if: ${{ !inputs.release_build }}
         working-directory: android
         run: gradle --no-daemon :app:assembleDebug
+        env:
+          ORG_GRADLE_PROJECT_appVersionName: ${{ inputs.version_name }}
+          ORG_GRADLE_PROJECT_appVersionCode: ${{ inputs.version_code }}
+      - name: Prepare protected Android signing identity
+        if: ${{ inputs.release_build }}
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.FINANCIAL_BEANCOUNT_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.FINANCIAL_BEANCOUNT_ANDROID_KEY_PASSWORD }}
+        run: |
+          [[ -n "$KEYSTORE_BASE64" ]] || { echo "Missing FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE"; exit 1; }
+          [[ -n "$KEYSTORE_PASSWORD" ]] || { echo "Missing FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          [[ -n "$KEY_ALIAS" ]] || { echo "Missing FINANCIAL_BEANCOUNT_ANDROID_KEY_ALIAS"; exit 1; }
+          [[ -n "$KEY_PASSWORD" ]] || { echo "Missing FINANCIAL_BEANCOUNT_ANDROID_KEY_PASSWORD"; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/financial-beancount.keystore"
+      - name: Build and verify signed release APK
+        if: ${{ inputs.release_build }}
+        working-directory: android
+        shell: bash
+        env:
+          ORG_GRADLE_PROJECT_appVersionName: ${{ inputs.version_name }}
+          ORG_GRADLE_PROJECT_appVersionCode: ${{ inputs.version_code }}
+          ORG_GRADLE_PROJECT_releaseStoreFile: ${{ runner.temp }}/financial-beancount.keystore
+          ORG_GRADLE_PROJECT_releaseStorePassword: ${{ secrets.FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_releaseKeyAlias: ${{ secrets.FINANCIAL_BEANCOUNT_ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_releaseKeyPassword: ${{ secrets.FINANCIAL_BEANCOUNT_ANDROID_KEY_PASSWORD }}
+        run: |
+          gradle --no-daemon :app:assembleRelease
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+          mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk"
+          sha256sum "app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk" > "app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk.sha256"
+      - name: Remove temporary signing identity
+        if: ${{ always() && inputs.release_build }}
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/financial-beancount.keystore"
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.release_build }}
         with:
           name: FinancialBeancount-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.release_build }}
+        with:
+          name: FinancialBeancount-android-release-${{ inputs.version_name }}
+          path: |
+            android/app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk
+            android/app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk.sha256
           if-no-files-found: error

@@ -40,6 +40,7 @@ still perform the authoritative certificate, password, trust-chain and signing c
 | Windows | Secrets `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE`, `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD`; variables `FINANCIAL_BEANCOUNT_WINDOWS_TIMESTAMP_URL`, `FINANCIAL_BEANCOUNT_WINDOWS_PUBLISHER` | Windows release publisher | Implemented; real certificate provisioning pending |
 | macOS | Secrets `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE`, `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE_PASSWORD`, `FINANCIAL_BEANCOUNT_APPLE_ID`, `FINANCIAL_BEANCOUNT_APPLE_APP_PASSWORD`; variables `FINANCIAL_BEANCOUNT_MACOS_SIGNING_IDENTITY`, `FINANCIAL_BEANCOUNT_APPLE_TEAM_ID` | Apple Developer account holder | Implemented in workflow; clean-runner validation pending |
 | Linux | Secret `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY` and optional `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY_PASSPHRASE`; variable `FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT` | Linux release publisher | AppImage path implemented; real publisher-key validation pending |
+| Android | Secrets `FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE`, `FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE_PASSWORD`, `FINANCIAL_BEANCOUNT_ANDROID_KEY_ALIAS`, `FINANCIAL_BEANCOUNT_ANDROID_KEY_PASSWORD` | Android release publisher | Stable signed APK build implemented; real key provisioning pending |
 
 Certificate renewal, revocation and operator handover are deployment operations. Before rotating any
 identity, the publisher must verify the new trust chain in a preview/release-candidate run, update the
@@ -234,3 +235,14 @@ fingerprint differs from `FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT`, create
 signature, exports a public verification keyring, verifies with `gpgv`, records hash-bound evidence,
 and runs the strict Linux Release gate. The temporary secret-key home is deleted on every exit. A
 positive run with the real publisher key remains required.
+
+## Android APK update foundation
+
+`Android build` produces either a development debug APK or, when `release_build` is enabled, a
+publisher-signed APK and SHA-256 file. Signed mode requires all four Android secrets above and fails
+closed when any is missing; the keystore exists only in the runner temporary directory and is removed
+afterward. Every later build must retain the same application ID and signing identity while increasing
+`version_code`, allowing Android to install it over the existing application without deleting its
+private ledger. Android security may require one uninstall when moving from an older randomly signed
+debug build to the fixed publisher identity; after that fixed-signing baseline, neither manual APK nor
+in-application updates may require uninstalling.

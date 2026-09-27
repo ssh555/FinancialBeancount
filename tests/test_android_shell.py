@@ -66,13 +66,31 @@ def test_web_client_uses_native_bridge_before_http_fetch() -> None:
     assert 'classList.add("native-app")' in script
 
 
-def test_android_debug_workflow_is_manual_and_uploads_only_debug_apk() -> None:
+def test_android_workflow_builds_debug_or_fail_closed_signed_apk() -> None:
     workflow = (ROOT / ".github/workflows/android-build.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
     assert "push:" not in workflow
     assert ":app:assembleDebug" in workflow
     assert "app-debug.apk" in workflow
-    assert "assembleRelease" not in workflow
+    assert ":app:assembleRelease" in workflow
+    assert "apksigner" in workflow
+    assert "sha256sum" in workflow
+    for secret in (
+        "FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE",
+        "FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE_PASSWORD",
+        "FINANCIAL_BEANCOUNT_ANDROID_KEY_ALIAS",
+        "FINANCIAL_BEANCOUNT_ANDROID_KEY_PASSWORD",
+    ):
+        assert secret in workflow
+
+
+def test_android_release_version_and_signing_are_build_parameters() -> None:
+    build = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+    assert 'providers.gradleProperty("appVersionCode")' in build
+    assert 'providers.gradleProperty("appVersionName")' in build
+    assert 'tasks.register("verifyReleaseSigning")' in build
+    assert 'it.name == "packageRelease"' in build
+    assert "unsigned Android release builds are forbidden" in build
 
 
 def test_native_android_overview_uses_async_core_client() -> None:

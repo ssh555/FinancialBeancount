@@ -22,6 +22,7 @@
 | Windows | Secrets `FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE`、`FINANCIAL_BEANCOUNT_WINDOWS_CERTIFICATE_PASSWORD`；Variables `FINANCIAL_BEANCOUNT_WINDOWS_TIMESTAMP_URL`、`FINANCIAL_BEANCOUNT_WINDOWS_PUBLISHER` | Windows 发布者 | 已实现；正式证书待配置 |
 | macOS | Secrets `FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE`、`FINANCIAL_BEANCOUNT_MACOS_CERTIFICATE_PASSWORD`、`FINANCIAL_BEANCOUNT_APPLE_ID`、`FINANCIAL_BEANCOUNT_APPLE_APP_PASSWORD`；Variables `FINANCIAL_BEANCOUNT_MACOS_SIGNING_IDENTITY`、`FINANCIAL_BEANCOUNT_APPLE_TEAM_ID` | Apple Developer 账号持有者 | 工作流已实现；干净 Runner 验证待完成 |
 | Linux | Secret `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY`、可选 `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY_PASSPHRASE`；Variable `FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT` | Linux 发布者 | AppImage 链路已实现；正式发布者密钥正向验证待完成 |
+| Android | Secrets `FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE`、`FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE_PASSWORD`、`FINANCIAL_BEANCOUNT_ANDROID_KEY_ALIAS`、`FINANCIAL_BEANCOUNT_ANDROID_KEY_PASSWORD` | Android 发布者 | 固定签名 APK 构建已实现；正式密钥待配置 |
 
 证书续期、吊销和发布者交接属于部署操作。轮换前必须在候选构建中验证新信任链，按需更新固定公钥/身份，保留上一可信版本的回滚能力，并在发行说明中记录。证书过期或被吊销时不得通过关闭门禁绕过。
 
@@ -72,6 +73,10 @@ WiX 校验保持启用，仅抑制与本项目设计明确冲突的 ICE38、ICE6
 Linux 使用标准 AppDir 结构及通过 SHA-256 固定的官方 `appimagetool` 1.9.1 生成单文件 AppImage。安装就是用户目录中的文件复制，升级为原子替换该文件，卸载仅删除该文件。CI 会提取真实产物并检查入口和主程序，再执行替换升级与删除，同时确认独立用户数据目录中的账本哨兵全程保留。
 
 正式作业把发布者 OpenPGP 私钥导入临时 GnuPG 目录，要求完整 40 位指纹与 `FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT` 完全一致，生成 ASCII 分离签名并导出公开验证 Keyring，随后使用 `gpgv` 验证、生成与 AppImage 摘要绑定的证据并进入严格 Linux 门禁。临时私钥目录会在任何退出路径删除；公开发布前仍需使用实际发布者密钥在干净 Runner 上完成正向验证。
+
+## Android APK 更新基础
+
+`Android build` 可生成普通调试 APK，或在 `release_build` 启用时生成发布者固定签名的 APK 和 SHA-256 文件。正式模式要求上述四项 Secret，缺失时失败关闭；Keystore 仅写入 Runner 临时目录并在结束时删除。每次后续发布必须保持相同 `applicationId` 与签名身份，并递增 `version_code`，Android 才能直接覆盖安装且保留应用私有账本。首次从历史随机调试签名切换到正式签名时，Android 的签名安全规则可能要求卸载一次；从固定签名基线开始，手动 APK 与应用内更新都不得再要求卸载。
 
 ## 当前发布阻塞项
 
