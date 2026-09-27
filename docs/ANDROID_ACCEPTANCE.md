@@ -35,6 +35,15 @@ Use the generated `complete-ledger.financial-beancount.zip` only when the report
 unprocessed files. Statements, databases, reports and archives are private data and must never be
 uploaded to GitHub or stored as Actions artifacts.
 
+Before device acceptance, also run the statistics-conservation validator against the generated
+database:
+
+```bash
+python scripts/validate_complete_ledger.py \
+  --database /path/to/complete-ledger.sqlite3 \
+  --output /path/to/complete-ledger-validation.json
+```
+
 ## Device round trip
 
 1. After first launch, disconnect networking and confirm Overview, Transactions, Review and Settings

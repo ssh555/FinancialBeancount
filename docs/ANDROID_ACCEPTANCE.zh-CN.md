@@ -28,6 +28,14 @@ python scripts/acceptance_full_ledger.py \
 
 只有当报告没有未处理文件时，才使用生成的 `complete-ledger.financial-beancount.zip`。账单、数据库、报告和归档都属于私有数据，不得上传到 GitHub 或作为 Actions 产物。
 
+进入真机验收前还应对生成的数据库运行统计守恒校验：
+
+```bash
+python scripts/validate_complete_ledger.py \
+  --database /path/to/complete-ledger.sqlite3 \
+  --output /path/to/complete-ledger-validation.json
+```
+
 ## 真机闭环
 
 1. 首次启动后关闭网络，确认概览、交易、审核和设置仍能打开。
