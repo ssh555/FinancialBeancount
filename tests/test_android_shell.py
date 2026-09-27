@@ -151,6 +151,18 @@ def test_native_android_review_covers_all_queues_and_decisions() -> None:
     assert 'put("changes", changes)' in source
 
 
+def test_native_data_view_has_about_and_double_confirmed_clear() -> None:
+    source = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeDataView.kt"
+    ).read_text(encoding="utf-8")
+    assert "https://github.com/ssh555/FinancialBeancount" in source
+    assert "https://github.com/CacinieP/FinancialBeancount" in source
+    assert "许可证：MIT" in source
+    assert 'setTitle("再次确认")' in source
+    assert '"DELETE", "/api/v1/data"' in source
+    assert 'put("confirmation", "DELETE ALL DATA")' in source
+
+
 def test_native_android_data_surface_keeps_platform_file_boundaries() -> None:
     source = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeDataView.kt"

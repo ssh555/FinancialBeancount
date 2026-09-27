@@ -259,6 +259,36 @@ def test_transaction_crud_uses_soft_delete_and_audit_events(store):
     ]
 
 
+def test_delete_all_data_requires_exact_confirmation_and_keeps_schema(store):
+    api = MobileLedgerApi(store)
+    api.dispatch(
+        "POST",
+        "/api/v1/transactions",
+        {
+            "actor": "local-user",
+            "booking_date": "2026-09-22",
+            "amount": "-18.50",
+            "direction": "expense",
+            "merchant": "待清空记录",
+            "tx_type": "expense",
+        },
+    )
+
+    refused = api.dispatch("DELETE", "/api/v1/data", {"confirmation": "DELETE"})
+    cleared = api.dispatch(
+        "DELETE", "/api/v1/data", {"confirmation": "DELETE ALL DATA"}
+    )
+    listing = api.dispatch("GET", "/api/v1/transactions")
+    health = api.dispatch("GET", "/api/v1/health")
+
+    assert refused.status == 409
+    assert cleared.body["data"]["state"] == "empty"
+    assert cleared.body["data"]["deleted"]["canonical_transactions"] == 1
+    assert cleared.body["data"]["deleted"]["canonical_events"] == 1
+    assert listing.body["meta"]["total"] == 0
+    assert health.body["data"]["schema_version"] == SCHEMA_VERSION
+
+
 def test_statement_import_and_canonical_export_api(store):
     api = MobileLedgerApi(store)
     sample = (

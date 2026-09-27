@@ -589,6 +589,16 @@ $("#trash-button").addEventListener("click", showTrash);
 $("#archive-export-button").addEventListener("click", exportPortableArchive);
 $("#archive-import-button").addEventListener("click", restorePortableArchive);
 $("#import-history-button").addEventListener("click", showImportHistory);
+$("#delete-all-data-button").addEventListener("click", async () => {
+  if (!confirm("永久删除本设备的全部账单数据？此操作无法撤销，请先导出完整归档。")) return;
+  if (!confirm("再次确认：账单、原始导入记录和全部审核记录都会永久删除。")) return;
+  try {
+    await request("/api/v1/data", { method: "DELETE", body: JSON.stringify({ confirmation: "DELETE ALL DATA" }) });
+    state.transactions = []; state.selectedSources = [];
+    toast("全部数据已删除，账本已恢复为空状态");
+    await loadSourceFilters(); await loadOverview(); await loadTransactions(true);
+  } catch (error) { toast(error.message); }
+});
 $("#load-more").addEventListener("click", () => { state.transactionPage += 1; loadTransactions(false); });
 $("#apply-dates").addEventListener("click", loadOverview);
 $("#source-filter-apply").addEventListener("click", () => {

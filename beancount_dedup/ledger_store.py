@@ -1202,6 +1202,36 @@ class LedgerStore:
                 now,
             )
 
+    def delete_all_data(self) -> dict[str, int]:
+        """Permanently clear ledger content while retaining schema and migration metadata."""
+
+        tables = (
+            "classification_events",
+            "classification_candidates",
+            "transaction_relationship_events",
+            "transaction_relationships",
+            "match_candidate_events",
+            "match_candidates",
+            "review_events",
+            "review_items",
+            "review_sessions",
+            "canonical_events",
+            "canonical_deletions",
+            "source_record_links",
+            "import_occurrences",
+            "canonical_transactions",
+            "raw_transactions",
+            "import_batches",
+        )
+        counts = {
+            table: int(self.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+            for table in tables
+        }
+        with self.transaction() as connection:
+            for table in tables:
+                connection.execute(f"DELETE FROM {table}")
+        return counts
+
     def record_canonical_event(
         self,
         canonical_id: str,

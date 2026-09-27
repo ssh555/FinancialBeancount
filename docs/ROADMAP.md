@@ -126,10 +126,10 @@ update, or acceptance work:
 
 ## Additional pre-release items
 
-- Add an About surface with product identity, the author's GitHub and other personal labels, project
+- Completed: the About surface shows product identity, the author's GitHub, project and upstream
   GitHub provenance, and license information.
-- Add Delete all data with a clear second confirmation and return to an empty-ledger state afterward;
-  it must not remove the installed application.
+- Completed: Delete all data uses a clear second confirmation and returns to an empty-ledger state;
+  it does not remove the installed application.
 - Full-ledger acceptance must audit investment/fund movements, refunds, inter-account transfers, and
   suspected duplicate records. The displayed cash-flow difference/balance must state that it is not
   the current account balance.

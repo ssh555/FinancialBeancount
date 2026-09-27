@@ -124,6 +124,11 @@ class MobileLedgerApi:
                 return self._ok(list(self.statement_importer.supported_formats()))
             if method == "GET" and path == "/api/v1/sources":
                 return self._ok(self.store.list_source_facets())
+            if method == "DELETE" and path == "/api/v1/data":
+                if (body or {}).get("confirmation") != "DELETE ALL DATA":
+                    raise ValueError("confirmation must be DELETE ALL DATA")
+                counts = self.store.delete_all_data()
+                return self._ok({"deleted": counts, "state": "empty"})
             if method == "POST" and path == "/api/v1/imports":
                 return self._import_statement(body or {})
             if method == "GET" and path == "/api/v1/imports":

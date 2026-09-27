@@ -3,6 +3,7 @@ package io.github.ssh555.financialbeancount
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Typeface
+import android.text.util.Linkify
 import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
@@ -62,6 +63,14 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
             addView(action("导出 CSV") { host.exportTransactions("csv") }, LayoutParams(0, dp(52), 1f))
             addView(action("导出 JSON") { host.exportTransactions("json") }, LayoutParams(0, dp(52), 1f))
         })
+        addView(section("关于"))
+        addView(TextView(context).apply {
+            text = "FinancialBeancount\n作者 GitHub：https://github.com/ssh555\n项目仓库：https://github.com/ssh555/FinancialBeancount\n原始出处：https://github.com/CacinieP/FinancialBeancount\n许可证：MIT"
+            setPadding(0, dp(8), 0, dp(8))
+            autoLinkMask = Linkify.WEB_URLS
+        })
+        addView(section("危险操作"))
+        addView(action("删除所有数据") { confirmDeleteAll() })
         loadFormats()
         showQueue(emptyList())
     }
@@ -119,6 +128,32 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
                     ImportFormat(row.getString("format_id"), row.getString("display_name"), (0 until extensions.length()).map(extensions::getString))
                 }
             }.onFailure { showProgress(it.message ?: "无法加载账单格式") }
+        }
+    }
+
+    private fun confirmDeleteAll() {
+        AlertDialog.Builder(context)
+            .setTitle("永久删除所有数据？")
+            .setMessage("请先导出完整归档。此操作会删除账单、原始导入记录和审核记录，且无法撤销。")
+            .setPositiveButton("继续") { _, _ ->
+                AlertDialog.Builder(context)
+                    .setTitle("再次确认")
+                    .setMessage("删除后本设备账本将恢复为空状态。")
+                    .setPositiveButton("永久删除") { _, _ -> deleteAll() }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun deleteAll() {
+        client.request("DELETE", "/api/v1/data", JSONObject().put("confirmation", "DELETE ALL DATA")) { result ->
+            result.onSuccess {
+                items.clear()
+                showQueue(emptyList())
+                showProgress("全部数据已删除，账本已恢复为空状态")
+            }.onFailure { showProgress(it.message ?: "删除失败") }
         }
     }
 
