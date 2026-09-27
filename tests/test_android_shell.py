@@ -54,6 +54,8 @@ def test_android_overview_handles_empty_balance_date_and_fits_period_controls() 
     assert "minWidth = 0" in overview
     assert "LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)" in overview
     assert "NativeUi.rounded(context, NativeUi.green" in overview
+    assert "NativeUi.styleTree(summary)" in overview
+    assert "NativeUi.styleTree(timeline)" in overview
 
 
 def test_android_native_ui_reuses_the_web_default_palette() -> None:

@@ -53,6 +53,7 @@ class NativeAppView(
         }
         addView(navigation, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         navigation.selectedItemId = navigationItems.getValue("概览").first
+        navigation.post { NativeUi.styleTree(navigation) }
     }
 
     private fun showPage(label: String) {

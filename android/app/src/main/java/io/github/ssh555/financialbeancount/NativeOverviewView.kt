@@ -68,6 +68,7 @@ class NativeOverviewView(
                     .takeUnless { it.isBlank() || it == "null" }
                     ?: "暂无日期"
                 accountBalance.text = "账户余额 ${money(data.getString("known_balance"))}\n截至 $asOf · 不随来源筛选"
+                NativeUi.styleTree(accountBalance)
             }.onFailure { accountBalance.text = it.message ?: "账户余额加载失败" }
         }
         client.request("GET", "/api/v1/statistics/summary?$query") { result ->
@@ -82,6 +83,7 @@ class NativeOverviewView(
                     setTextColor(NativeUi.muted)
                     setPadding(dp(4), dp(6), dp(4), dp(8))
                 })
+                NativeUi.styleTree(summary)
             }.onFailure {
                 summary.removeAllViews()
                 summary.addView(TextView(context).apply { text = it.message ?: "统计加载失败" })
@@ -102,6 +104,7 @@ class NativeOverviewView(
                     })
                 }
                 if (rows.length() == 0) timeline.addView(TextView(context).apply { text = "当前范围没有可统计交易" })
+                NativeUi.styleTree(timeline)
             }.onFailure { timeline.addView(TextView(context).apply { text = it.message ?: "周期统计加载失败" }) }
         }
     }
