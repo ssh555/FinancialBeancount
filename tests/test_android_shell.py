@@ -80,9 +80,15 @@ def test_android_launches_native_mobile_navigation() -> None:
     for page in ("概览", "交易", "审核", "数据"):
         assert f'"{page}"' in shell
     assert "ScrollView" in shell
-    assert "minHeight = dp(56)" in shell
+    assert "BottomNavigationView" in shell
+    assert "LABEL_VISIBILITY_LABELED" in shell
+    assert "ic_overview" in shell and "ic_transactions" in shell
     assert "pageFactories" in shell
     assert "getOrPut(label)" in shell
+
+    build = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+    assert "com.google.android.material:material" in build
+    assert "androidx.recyclerview:recyclerview" in build
 
 
 def test_web_client_uses_native_bridge_before_http_fetch() -> None:

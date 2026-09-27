@@ -1,13 +1,13 @@
 package io.github.ssh555.financialbeancount
 
 import android.content.Context
-import android.graphics.Typeface
-import android.view.Gravity
+import android.content.res.ColorStateList
+import android.view.Menu
 import android.view.View
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class NativeAppView(
     context: Context,
@@ -25,7 +25,13 @@ class NativeAppView(
     )
     private val pages = mutableMapOf<String, View>()
     private val pageContainers = mutableMapOf<String, ScrollView>()
-    private val navigation = LinearLayout(context)
+    private val navigation = BottomNavigationView(context)
+    private val navigationItems = linkedMapOf(
+        "概览" to Pair(View.generateViewId(), R.drawable.ic_overview),
+        "交易" to Pair(View.generateViewId(), R.drawable.ic_transactions),
+        "审核" to Pair(View.generateViewId(), R.drawable.ic_review),
+        "数据" to Pair(View.generateViewId(), R.drawable.ic_data),
+    )
 
     init {
         orientation = VERTICAL
@@ -33,30 +39,25 @@ class NativeAppView(
         content.addView(containerFor("概览"))
         addView(content, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
 
-        navigation.orientation = HORIZONTAL
-        navigation.gravity = Gravity.CENTER
-        navigation.setPadding(dp(4), dp(4), dp(4), dp(4))
         navigation.setBackgroundColor(NativeUi.card)
         navigation.elevation = dp(10).toFloat()
-        pageFactories.forEach { (label, _) ->
-            navigation.addView(Button(context).apply {
-                text = "${mapOf("概览" to "⌂", "交易" to "≡", "审核" to "✓", "数据" to "⇄").getValue(label)}\n$label"
-                isAllCaps = false
-                minHeight = dp(56)
-                backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
-                setTextColor(NativeUi.muted)
-                stateListAnimator = null
-                setOnClickListener { showPage(label, this) }
-            }, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        navigation.itemIconTintList = navigationColors()
+        navigation.itemTextColor = navigationColors()
+        navigation.labelVisibilityMode = BottomNavigationView.LABEL_VISIBILITY_LABELED
+        navigationItems.forEach { (label, item) ->
+            navigation.menu.add(Menu.NONE, item.first, Menu.NONE, label).setIcon(item.second)
+        }
+        navigation.setOnItemSelectedListener { item ->
+            navigationItems.entries.firstOrNull { it.value.first == item.itemId }?.key?.let(::showPage)
+            true
         }
         addView(navigation, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        selectButton(0)
+        navigation.selectedItemId = navigationItems.getValue("概览").first
     }
 
-    private fun showPage(label: String, selected: Button) {
+    private fun showPage(label: String) {
         content.removeAllViews()
         content.addView(containerFor(label))
-        selectButton(navigation.indexOfChild(selected))
         val page = pages.getValue(label)
         when (page) {
             is NativeOverviewView -> page.refresh()
@@ -77,16 +78,10 @@ class NativeAppView(
         addView(page, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     }
 
-    private fun selectButton(index: Int) {
-        for (position in 0 until navigation.childCount) {
-            (navigation.getChildAt(position) as Button).apply {
-                isSelected = position == index
-                alpha = if (isSelected) 1f else 0.65f
-                setTextColor(if (isSelected) NativeUi.green else NativeUi.muted)
-                setTypeface(typeface, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
-            }
-        }
-    }
+    private fun navigationColors() = ColorStateList(
+        arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+        intArrayOf(NativeUi.green, NativeUi.muted),
+    )
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }

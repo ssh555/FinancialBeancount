@@ -20,6 +20,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
     private var reviewType = "imports"
     private val selectedWarnings = mutableSetOf<String>()
     private val warningChecks = mutableListOf<CheckBox>()
+    private val typeButtons = mutableListOf<Pair<Button, String>>()
 
     init {
         orientation = VERTICAL
@@ -37,7 +38,16 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
                             text = label
                             minWidth = 0
                             minHeight = dp(44)
-                            setOnClickListener { reviewType = value; reload() }
+                            tag = if (value == reviewType) "primary" else null
+                            typeButtons += this to value
+                            setOnClickListener {
+                                reviewType = value
+                                typeButtons.forEach { (button, buttonValue) ->
+                                    button.tag = if (buttonValue == value) "primary" else null
+                                    NativeUi.styleButton(button, primary = buttonValue == value)
+                                }
+                                reload()
+                            }
                         }, LayoutParams(0, dp(48), 1f))
                     }
                 })
@@ -47,7 +57,6 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
         addView(list)
         progress.visibility = View.GONE
         addView(progress, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        reload()
     }
 
     fun reload() {

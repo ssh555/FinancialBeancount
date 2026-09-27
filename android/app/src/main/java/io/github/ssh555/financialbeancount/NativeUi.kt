@@ -48,7 +48,7 @@ object NativeUi {
                 view.background = rounded(view.context, Color.WHITE, 11)
                 view.setPadding(dp(view.context, 12), 0, dp(view.context, 12), 0)
             }
-            is Button -> styleButton(view)
+            is Button -> styleButton(view, primary = view.tag == "primary")
             is TextView -> {
                 view.setTextColor(if (view.tag == "featured") Color.WHITE else ink)
                 val style = if (view.typeface?.isBold == true) Typeface.BOLD else Typeface.NORMAL

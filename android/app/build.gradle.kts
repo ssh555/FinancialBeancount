@@ -99,4 +99,6 @@ tasks.matching { it.name.endsWith("PythonSources") }.configureEach {
 dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.documentfile:documentfile:1.1.0")
+    implementation("androidx.recyclerview:recyclerview:1.4.0")
+    implementation("com.google.android.material:material:1.12.0")
 }

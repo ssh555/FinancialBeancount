@@ -68,6 +68,8 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
 
     fun showQueue(files: List<QueueItem>) {
         queue.removeAllViews()
+        queue.visibility = if (files.isEmpty()) GONE else VISIBLE
+        importButton.visibility = if (files.isEmpty()) GONE else VISIBLE
         files.forEach { item ->
             queue.addView(LinearLayout(context).apply {
                 orientation = VERTICAL
@@ -91,7 +93,6 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
                 }
             })
         }
-        if (files.isEmpty()) queue.addView(TextView(context).apply { text = "尚未选择账单文件"; gravity = Gravity.CENTER; setPadding(0, dp(24), 0, dp(24)) })
         importButton.isEnabled = files.any { it.status == "等待导入" }
         NativeUi.styleTree(queue)
     }

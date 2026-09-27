@@ -117,9 +117,11 @@ class NativeOverviewView(
                     text = label
                     minWidth = 0
                     minHeight = dp(48)
+                    tag = if (value == selectedValue) "primary" else null
                     NativeUi.styleButton(this, primary = value == selectedValue)
                     setOnClickListener {
                         buttons.forEach { (candidate, candidateValue) ->
+                            candidate.tag = if (candidateValue == value) "primary" else null
                             NativeUi.styleButton(candidate, primary = candidateValue == value)
                         }
                         select(value)

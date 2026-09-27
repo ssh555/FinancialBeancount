@@ -54,7 +54,6 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
         more.minHeight = dp(48)
         more.setOnClickListener { page += 1; loadPage(false) }
         addView(more)
-        reload()
     }
 
     fun reload() { page = 1; loaded = 0; list.removeAllViews(); loadPage(true) }

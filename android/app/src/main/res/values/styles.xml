@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.FinancialBeancount" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.FinancialBeancount" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">#F3F2EC</item>
-        <item name="android:colorAccent">#235C46</item>
+        <item name="colorPrimary">#235C46</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#DCEBE2</item>
+        <item name="colorOnPrimaryContainer">#173D2F</item>
+        <item name="colorSurface">#FFFEFA</item>
+        <item name="colorOnSurface">#17221D</item>
+        <item name="colorOutline">#686F6B</item>
+        <item name="colorError">#A23A32</item>
         <item name="android:navigationBarColor">#F3F2EC</item>
         <item name="android:statusBarColor">#235C46</item>
     </style>
