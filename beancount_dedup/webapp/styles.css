@@ -35,6 +35,9 @@ main { max-width: 1040px; margin: 0 auto; padding: 22px 16px 104px; }
 .icon-button { width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 50%; background: var(--card); font-size: 1.4rem; color: var(--green); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 17px; box-shadow: var(--shadow); margin-bottom: 14px; }
 .date-filter { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 10px; }
+.period-presets { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 4px; border-radius: 12px; background: #e5e6e0; }
+.period-presets button { border: 0; padding: 8px 3px; border-radius: 9px; background: transparent; color: var(--muted); font-size: .78rem; }
+.period-presets button.active { background: var(--card); color: var(--green); box-shadow: 0 2px 8px rgba(0,0,0,.06); font-weight: 750; }
 label { display: grid; gap: 6px; color: var(--muted); font-size: .78rem; font-weight: 650; }
 input, select { width: 100%; min-height: 43px; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
 .button { min-height: 43px; border-radius: 11px; padding: 9px 15px; font-weight: 750; border: 1px solid transparent; }

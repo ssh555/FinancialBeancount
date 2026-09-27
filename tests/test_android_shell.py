@@ -50,6 +50,9 @@ def test_web_client_uses_native_bridge_before_http_fetch() -> None:
     assert "textAsBase64" in script
     assert "reportNativeArchiveImportResult" in script
     assert "恢复完整归档会覆盖此设备当前账本" in script
+    assert 'setStatisticsPeriod("month", false)' in script
+    assert 'period === "week"' in script
+    assert "useCustomStatisticsPeriod" in script
 
 
 def test_android_debug_workflow_is_manual_and_uploads_only_debug_apk() -> None:

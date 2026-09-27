@@ -87,6 +87,29 @@ function dateQuery() {
   return params.toString();
 }
 
+function localDate(value) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function setStatisticsPeriod(period, reload = true) {
+  const today = new Date(); let start = new Date(today); let end = new Date(today);
+  if (period === "week") start.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  if (period === "month") start = new Date(today.getFullYear(), today.getMonth(), 1);
+  if (period === "year") start = new Date(today.getFullYear(), 0, 1);
+  if (period === "all") { $("#date-from").value = ""; $("#date-to").value = ""; }
+  else { $("#date-from").value = localDate(start); $("#date-to").value = localDate(end); }
+  $$('[data-statistics-period]').forEach(button => button.classList.toggle("active", button.dataset.statisticsPeriod === period));
+  if (reload) loadOverview();
+}
+
+function useCustomStatisticsPeriod() {
+  $$('[data-statistics-period]').forEach(button => button.classList.remove("active"));
+  loadOverview();
+}
+
 async function loadOverview() {
   $("#summary-cards").innerHTML = '<div class="summary-card skeleton"></div>'.repeat(4);
   $("#category-list").innerHTML = '<div class="skeleton"></div>';
@@ -509,6 +532,9 @@ $("#archive-import-button").addEventListener("click", restorePortableArchive);
 $("#import-history-button").addEventListener("click", showImportHistory);
 $("#load-more").addEventListener("click", () => { state.transactionPage += 1; loadTransactions(false); });
 $("#apply-dates").addEventListener("click", loadOverview);
+$$('[data-statistics-period]').forEach(button => button.addEventListener("click", () => setStatisticsPeriod(button.dataset.statisticsPeriod)));
+$("#date-from").addEventListener("change", useCustomStatisticsPeriod);
+$("#date-to").addEventListener("change", useCustomStatisticsPeriod);
 $("#connection-button").addEventListener("click", () => showView("settings"));
 $("#dialog-close").addEventListener("click", () => $("#detail-dialog").close());
 $("#settings-form").addEventListener("submit", async event => {
@@ -571,5 +597,6 @@ $("#detail-dialog").addEventListener("click", async event => {
   } catch (error) { toast(error.message); }
 });
 
+setStatisticsPeriod("month", false);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js").catch(() => {});
 request("/api/v1/health").then(() => loadOverview()).catch(error => { setConnection(false); toast(error.message); loadOverview(); });

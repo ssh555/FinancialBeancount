@@ -28,6 +28,13 @@
         <button class="icon-button" data-action="refresh" type="button" aria-label="刷新">↻</button>
       </div>
       <div class="date-filter card">
+        <div class="period-presets" aria-label="统计周期">
+          <button data-statistics-period="day" type="button">今日</button>
+          <button data-statistics-period="week" type="button">本周</button>
+          <button class="active" data-statistics-period="month" type="button">本月</button>
+          <button data-statistics-period="year" type="button">本年</button>
+          <button data-statistics-period="all" type="button">全部</button>
+        </div>
         <label>开始日期<input id="date-from" type="date"></label>
         <label>结束日期<input id="date-to" type="date"></label>
         <button id="apply-dates" class="button secondary" type="button">应用</button>
