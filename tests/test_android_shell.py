@@ -66,3 +66,18 @@ def test_android_debug_workflow_is_manual_and_uploads_only_debug_apk() -> None:
     assert ":app:assembleDebug" in workflow
     assert "app-debug.apk" in workflow
     assert "assembleRelease" not in workflow
+
+
+def test_native_android_overview_uses_async_core_client() -> None:
+    client = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeLedgerClient.kt"
+    ).read_text(encoding="utf-8")
+    overview = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeOverviewView.kt"
+    ).read_text(encoding="utf-8")
+    assert "Executors.newFixedThreadPool(3)" in client
+    assert 'getModule("beancount_dedup.android_bridge")' in client
+    assert "/api/v1/statistics/summary" in overview
+    assert "/api/v1/statistics/timeline" in overview
+    assert '"日" to "day"' in overview
+    assert "minHeight = dp(48)" in overview
