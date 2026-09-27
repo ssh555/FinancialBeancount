@@ -156,6 +156,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AndroidUpdateManager(this).cleanupDownloadedPackages()
         if (!Python.isStarted()) Python.start(AndroidPlatform(this))
         bridge = Python.getInstance().getModule("beancount_dedup.android_bridge")
         nativeClient = NativeLedgerClient(this)

@@ -39,6 +39,9 @@ def test_android_shell_reuses_core_and_limits_network_to_updates() -> None:
     assert "MAX_APK_BYTES" in updater
     assert "FileProvider.getUriForFile" in updater
     assert "canRequestPackageInstalls" in updater
+    assert "cleanupDownloadedPackages" in updater
+    assert "directory.listFiles()?.forEach" in updater
+    assert "AndroidUpdateManager(this).cleanupDownloadedPackages()" in activity
 
 
 def test_android_overview_handles_empty_balance_date_and_fits_period_controls() -> None:

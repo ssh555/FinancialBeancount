@@ -34,10 +34,8 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         orientation = VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(24))
         addView(TextView(context).apply { text = "数据与迁移"; textSize = 26f; setTypeface(typeface, Typeface.BOLD) })
-        addView(section("导入官方账单"))
-        addView(action("选择一个文件") { host.pickOneStatement() })
-        addView(action("选择多个文件") { host.pickMultipleStatements() })
-        addView(action("选择文件夹") { host.pickStatementFolder() })
+        addView(TextView(context).apply { text = "导入、备份和设备设置"; setTextColor(NativeUi.muted); setPadding(0, 0, 0, dp(10)) })
+        addView(action("导入官方账单") { showImportMenu() })
         queue.orientation = VERTICAL
         addView(queue)
         importButton.text = "导入队列"
@@ -48,30 +46,10 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         progress.gravity = Gravity.CENTER
         progress.setPadding(0, dp(10), 0, dp(10))
         addView(progress)
-        addView(section("完整账本"))
-        addView(action("恢复完整归档") {
-            AlertDialog.Builder(context)
-                .setTitle("覆盖当前账本？")
-                .setMessage("请先导出备份。恢复成功后，当前设备账本会被完整归档替换。")
-                .setPositiveButton("继续") { _, _ -> host.restorePortableArchive() }
-                .setNegativeButton("取消", null)
-                .show()
-        })
-        addView(action("导出完整归档") { host.exportPortableArchive() })
-        addView(section("交易导出"))
-        addView(LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            addView(action("导出 CSV") { host.exportTransactions("csv") }, LayoutParams(0, dp(52), 1f))
-            addView(action("导出 JSON") { host.exportTransactions("json") }, LayoutParams(0, dp(52), 1f))
-        })
-        addView(section("关于"))
-        addView(action("检查更新") { host.checkForUpdates() })
-        addView(TextView(context).apply {
-            text = "FinancialBeancount\n作者 GitHub：https://github.com/ssh555\n项目仓库：https://github.com/ssh555/FinancialBeancount\n原始出处：https://github.com/CacinieP/FinancialBeancount\n许可证：MIT"
-            setPadding(0, dp(8), 0, dp(8))
-            autoLinkMask = Linkify.WEB_URLS
-        })
-        addView(section("危险操作"))
+        addView(action("备份与恢复") { showArchiveMenu() })
+        addView(action("导出交易") { showExportMenu() })
+        addView(action("更新与关于") { showAbout() })
+        addView(section("数据安全"))
         addView(action("删除所有数据") { confirmDeleteAll() })
         loadFormats()
         showQueue(emptyList())
@@ -120,6 +98,61 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
 
     fun showProgress(message: String) {
         progress.text = message
+    }
+
+    private fun showImportMenu() {
+        AlertDialog.Builder(context)
+            .setTitle("导入官方账单")
+            .setItems(arrayOf("选择一个文件", "选择多个文件", "选择文件夹")) { _, index ->
+                when (index) {
+                    0 -> host.pickOneStatement()
+                    1 -> host.pickMultipleStatements()
+                    else -> host.pickStatementFolder()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showArchiveMenu() {
+        AlertDialog.Builder(context)
+            .setTitle("备份与恢复")
+            .setItems(arrayOf("导出完整归档", "从完整归档恢复")) { _, index ->
+                if (index == 0) host.exportPortableArchive() else confirmArchiveRestore()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun confirmArchiveRestore() {
+        AlertDialog.Builder(context)
+            .setTitle("覆盖当前账本？")
+            .setMessage("请先导出备份。恢复成功后，当前设备账本会被完整归档替换。")
+            .setPositiveButton("继续") { _, _ -> host.restorePortableArchive() }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showExportMenu() {
+        AlertDialog.Builder(context)
+            .setTitle("导出交易")
+            .setItems(arrayOf("CSV 表格", "JSON 数据")) { _, index -> host.exportTransactions(if (index == 0) "csv" else "json") }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showAbout() {
+        val about = TextView(context).apply {
+            text = "FinancialBeancount\n版本 ${BuildConfig.VERSION_NAME}\n\n作者 GitHub：https://github.com/ssh555\n项目仓库：https://github.com/ssh555/FinancialBeancount\n原始出处：https://github.com/CacinieP/FinancialBeancount\n许可证：MIT"
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+            autoLinkMask = Linkify.WEB_URLS
+        }
+        AlertDialog.Builder(context)
+            .setTitle("更新与关于")
+            .setView(about)
+            .setPositiveButton("检查更新") { _, _ -> host.checkForUpdates() }
+            .setNegativeButton("关闭", null)
+            .show()
     }
 
     private fun loadFormats() {
@@ -207,6 +240,10 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
             "选择一个文件" to "导入一份微信、支付宝或银行账单",
             "选择多个文件" to "一次加入多份账单并逐项查看结果",
             "选择文件夹" to "扫描所选文件夹中的支持格式",
+            "导入官方账单" to "单个、多个或整个文件夹",
+            "备份与恢复" to "导出或恢复完整账本归档",
+            "导出交易" to "生成 CSV 表格或 JSON 数据",
+            "更新与关于" to "检查新版本、项目来源与许可证",
             "恢复完整归档" to "用本地归档覆盖并恢复当前账本",
             "导出完整归档" to "备份账本、原始记录和审核轨迹",
             "检查更新" to "仅在点击后连接 GitHub 检查新版",

@@ -61,6 +61,7 @@ class AndroidUpdateManager(private val context: Context) {
         require(checksum.size >= 2 && checksum[0].matches(Regex("[0-9a-fA-F]{64}"))) { "APK 校验文件无效" }
         require(checksum.last().substringAfterLast('/').removePrefix("*") == update.apkName) { "APK 校验文件名不匹配" }
         val directory = File(context.cacheDir, "updates").apply { mkdirs() }
+        directory.listFiles()?.forEach { stale -> stale.delete() }
         val target = File(directory, update.apkName)
         val connection = open(update.apkUrl)
         try {
@@ -105,6 +106,11 @@ class AndroidUpdateManager(private val context: Context) {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         })
         return true
+    }
+
+    fun cleanupDownloadedPackages() {
+        File(context.cacheDir, "updates").listFiles()?.forEach { it.delete() }
+        File(context.cacheDir, "updates").delete()
     }
 
     private fun downloadText(url: String, limit: Int): String {
