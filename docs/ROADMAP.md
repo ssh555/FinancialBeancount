@@ -13,6 +13,10 @@ auditable stages. It does not imply that a release should be created early.
 
 ## Release gate: updates without uninstalling
 
+The later release batch will use one GitHub Release per version for Android, Windows, macOS, Linux,
+web static packages where applicable, checksums and signatures, while retaining GitHub-generated
+source archives and one consistent cross-platform version.
+
 Before the first downloadable Release is published, implement and verify an update path that does
 not require users to uninstall and reinstall the application:
 

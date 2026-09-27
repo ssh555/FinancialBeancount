@@ -81,3 +81,14 @@ def test_native_android_overview_uses_async_core_client() -> None:
     assert "/api/v1/statistics/timeline" in overview
     assert '"日" to "day"' in overview
     assert "minHeight = dp(48)" in overview
+
+
+def test_native_android_transactions_are_paginated_and_searchable() -> None:
+    source = (
+        ROOT
+        / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeTransactionsView.kt"
+    ).read_text(encoding="utf-8")
+    assert "page_size=30" in source
+    assert "URLEncoder.encode" in source
+    assert 'more.text = "加载更多"' in source
+    assert '"GET", "/api/v1/transactions/$id"' in source

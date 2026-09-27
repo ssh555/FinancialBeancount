@@ -29,6 +29,8 @@
 
 ## 后续发布批次
 
+- 统一 GitHub Release：同一版本集中附加 Android、Windows、macOS、Linux、网站静态包（适用时）、校验与签名文件，并保留 GitHub 自动生成的源代码归档；所有平台使用一致版本号。
+
 - 配置实际 Windows 和 Apple 发布者凭据，并在干净 Runner 上完成正向验证。
 - 使用实际发布者 OpenPGP 密钥完成 Linux AppImage 签名正向验证；AppImage 构建、替换升级、卸载数据保留和严格门禁代码已完成。
 - 每次正式发布后，将该版本加入持续升级兼容矩阵。
