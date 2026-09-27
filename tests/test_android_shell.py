@@ -108,3 +108,6 @@ def test_native_android_review_covers_all_queues_and_decisions() -> None:
     assert "/api/v1/import-reviews/" in source
     assert 'decide(endpoint, "confirm")' in source
     assert 'decide(endpoint, "reject")' in source
+    assert 'builder.setPositiveButton("人工修改")' in source
+    assert 'if (type == "imports") "modify" else "confirm"' in source
+    assert 'put("changes", changes)' in source

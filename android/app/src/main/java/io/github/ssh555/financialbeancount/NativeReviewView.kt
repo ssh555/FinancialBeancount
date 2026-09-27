@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -92,7 +93,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
                     isAllCaps = false
                     gravity = Gravity.START
                     text = "${title(type, item)}\n${subtitle(type, item)}"
-                    setOnClickListener { AlertDialog.Builder(context).setTitle(title(type, item)).setMessage(item.toString(2)).setPositiveButton("关闭", null).show() }
+                    setOnClickListener { showDetail(type, item, endpoint) }
                 })
                 addView(LinearLayout(context).apply {
                     orientation = HORIZONTAL
@@ -101,6 +102,47 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
                 })
             })
         }
+    }
+
+    private fun showDetail(type: String, item: JSONObject, endpoint: String) {
+        val builder = AlertDialog.Builder(context)
+            .setTitle(title(type, item))
+            .setMessage(item.toString(2))
+            .setNegativeButton("关闭", null)
+        if (type == "imports" || type == "matches") {
+            builder.setPositiveButton("人工修改") { _, _ -> showModify(type, item, endpoint) }
+        }
+        builder.show()
+    }
+
+    private fun showModify(type: String, item: JSONObject, endpoint: String) {
+        val source = if (type == "imports") item.optJSONObject("raw") else item.optJSONObject("payment")
+        val fields = LinearLayout(context).apply { orientation = VERTICAL; setPadding(dp(18), 0, dp(18), 0) }
+        val merchantValue = source?.optString("merchant")?.takeIf { it.isNotBlank() }
+            ?: source?.optString("counterparty")
+        val merchant = edit("商户", merchantValue)
+        val category = edit("分类", source?.optString("category"))
+        val notes = edit("备注", source?.optString("notes"))
+        listOf(merchant, category, notes).forEach(fields::addView)
+        AlertDialog.Builder(context)
+            .setTitle("人工修改并完成审核")
+            .setView(fields)
+            .setPositiveButton("保存") { _, _ ->
+                val changes = JSONObject()
+                    .put("merchant", merchant.text.toString().trim())
+                    .put("category", category.text.toString().trim())
+                    .put("notes", notes.text.toString().trim())
+                val action = if (type == "imports") "modify" else "confirm"
+                client.request(
+                    "POST",
+                    "$endpoint/$action",
+                    JSONObject().put("actor", "android-user").put("changes", changes),
+                ) { result ->
+                    result.onSuccess { reload() }.onFailure { showError(it) }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun decide(endpoint: String, action: String) {
@@ -131,6 +173,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
     }
 
     private fun showError(error: Throwable) { list.removeAllViews(); list.addView(message(error.message ?: "审核加载失败")) }
+    private fun edit(hintText: String, value: String?) = EditText(context).apply { hint = hintText; setText(value.orEmpty()); minHeight = dp(52) }
     private fun message(value: String) = TextView(context).apply { text = value; gravity = Gravity.CENTER; setPadding(0, dp(32), 0, dp(32)) }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
