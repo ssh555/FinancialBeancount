@@ -28,7 +28,7 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert "contentResolver.openOutputStream" in activity
     assert "fun saveDocument(" in activity
     assert "fun pickPortableArchive()" in activity
-    assert 'bridge.callAttr(' in activity and '"restore_archive"' in activity
+    assert "bridge.callAttr(" in activity and '"restore_archive"' in activity
     assert "androidx.documentfile:documentfile" in build
 
 
