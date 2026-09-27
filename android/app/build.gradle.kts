@@ -43,6 +43,9 @@ val syncPythonCore by tasks.registering(Sync::class) {
 tasks.named("preBuild").configure {
     dependsOn(syncPythonCore)
 }
+tasks.matching { it.name.endsWith("PythonSources") }.configureEach {
+    dependsOn(syncPythonCore)
+}
 
 dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
