@@ -44,6 +44,15 @@ python scripts/validate_complete_ledger.py \
   --output /path/to/complete-ledger-validation.json
 ```
 
+Then run the primary mobile read-path baseline. Do not proceed to device acceptance if any item
+exceeds its reported limit:
+
+```bash
+python scripts/benchmark_mobile.py \
+  --database /path/to/complete-ledger.sqlite3 \
+  --output /path/to/mobile-performance.json
+```
+
 ## Device round trip
 
 1. After first launch, disconnect networking and confirm Overview, Transactions, Review and Settings

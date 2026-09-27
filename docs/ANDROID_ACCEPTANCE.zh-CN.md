@@ -36,6 +36,14 @@ python scripts/validate_complete_ledger.py \
   --output /path/to/complete-ledger-validation.json
 ```
 
+再运行移动端主要读取路径的性能基线；任一项目超过报告中的阈值时，不进入真机验收：
+
+```bash
+python scripts/benchmark_mobile.py \
+  --database /path/to/complete-ledger.sqlite3 \
+  --output /path/to/mobile-performance.json
+```
+
 ## 真机闭环
 
 1. 首次启动后关闭网络，确认概览、交易、审核和设置仍能打开。

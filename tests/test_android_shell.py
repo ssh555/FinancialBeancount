@@ -40,6 +40,8 @@ def test_android_launches_native_mobile_navigation() -> None:
         assert f'"{page}"' in shell
     assert "ScrollView" in shell
     assert "minHeight = dp(56)" in shell
+    assert "pageFactories" in shell
+    assert "getOrPut(label)" in shell
 
 
 def test_web_client_uses_native_bridge_before_http_fetch() -> None:
