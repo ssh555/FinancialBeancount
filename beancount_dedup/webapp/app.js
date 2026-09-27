@@ -142,11 +142,12 @@ async function loadOverview() {
       request(`/api/v1/statistics/timeline?period=${state.timelinePeriod}&${query}`),
     ]);
     const cards = [
-      ["净支出", money(data.net_expense), `${data.expense_count} 笔消费`, "featured"],
-      ["总支出", money(data.gross_expense), "退款前", ""],
-      ["已确认退款", money(data.refunds), `${data.refund_count} 笔`, ""],
-      ["普通收入", money(data.ordinary_income), `${data.income_count} 笔`, ""],
+      ["结余", money(data.net_cash_flow), "收入 + 退款 − 支出", "featured"],
+      ["支出", money(data.gross_expense), `${data.expense_count} 笔`, ""],
+      ["收入", money(data.ordinary_income), `${data.income_count} 笔`, ""],
+      ["退款", money(data.refunds), `${data.refund_count} 笔`, ""],
     ];
+    $("#statistics-range-label").textContent = data.date_from || data.date_to ? `统计范围：${data.date_from || "最早记录"} ～ ${data.date_to || "最新记录"}` : "统计范围：全部账单";
     $("#summary-cards").innerHTML = cards.map(([title, value, note, css]) =>
       `<article class="summary-card ${css}"><small>${title}</small><strong>${value}</strong><small>${note}</small></article>`
     ).join("");
@@ -157,7 +158,7 @@ async function loadOverview() {
       <div class="category-bar"><span style="width:${Math.max(0, Number(item.net_expense)) / maximum * 100}%"></span></div></div>`).join("") : empty("当前范围没有可统计交易");
     $("#timeline-list").innerHTML = timeline.data.length ? timeline.data.map(item => {
       const label = item.date_from === item.date_to ? item.date_from : `${item.date_from} ～ ${item.date_to}`;
-      return `<div class="timeline-row"><strong>${escapeHtml(label)}</strong><span>收入 ${money(item.ordinary_income)}</span><span>支出 ${money(item.gross_expense)}</span><span>净支出 ${money(item.net_expense)}</span></div>`;
+      return `<div class="timeline-row"><strong>${escapeHtml(label)}</strong><span>收入 ${money(item.ordinary_income)}</span><span>支出 ${money(item.gross_expense)}</span><span>结余 ${money(item.net_cash_flow)}</span></div>`;
     }).join("") : empty("当前范围没有周期统计");
     if (data.pending_review_excluded_count) toast(`${data.pending_review_excluded_count} 笔待审核交易未计入统计`);
   } catch (error) { renderError($("#summary-cards"), error); renderError($("#category-list"), error); renderError($("#timeline-list"), error); }
@@ -637,6 +638,6 @@ $("#detail-dialog").addEventListener("click", async event => {
 });
 
 if (globalThis.FinancialBeancountNative) document.documentElement.classList.add("native-app");
-setStatisticsPeriod("month", false);
+setStatisticsPeriod("all", false);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js").catch(() => {});
 request("/api/v1/health").then(() => loadOverview()).catch(error => { setConnection(false); toast(error.message); loadOverview(); });

@@ -52,7 +52,7 @@ def test_web_client_uses_native_bridge_before_http_fetch() -> None:
     assert "textAsBase64" in script
     assert "reportNativeArchiveImportResult" in script
     assert "恢复完整归档会覆盖此设备当前账本" in script
-    assert 'setStatisticsPeriod("month", false)' in script
+    assert 'setStatisticsPeriod("all", false)' in script
     assert 'period === "week"' in script
     assert "useCustomStatisticsPeriod" in script
     assert "await nativeRequest(payload)" in script
@@ -81,6 +81,8 @@ def test_native_android_overview_uses_async_core_client() -> None:
     assert "/api/v1/statistics/timeline" in overview
     assert '"日" to "day"' in overview
     assert "minHeight = dp(48)" in overview
+    assert 'private var range = "all"' in overview
+    assert '"结余 ${money(data.getString("net_cash_flow"))}' in overview
 
 
 def test_native_android_transactions_are_paginated_and_searchable() -> None:
