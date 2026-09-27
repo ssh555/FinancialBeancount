@@ -71,7 +71,7 @@ fun FinancialBeancountApp(client: NativeLedgerClient, dataView: NativeDataView) 
     ) { padding ->
         when (destination) {
             LedgerDestination.Overview -> ComposeOverview(client, Modifier.padding(padding))
-            LedgerDestination.Transactions -> LegacySurface(Modifier.padding(padding)) { NativeTransactionsView(it, client).apply { reload() } }
+            LedgerDestination.Transactions -> ComposeTransactions(client, Modifier.padding(padding))
             LedgerDestination.Review -> LegacySurface(Modifier.padding(padding)) { NativeReviewView(it, client).apply { reload() } }
             LedgerDestination.Data -> LegacySurface(Modifier.padding(padding)) { dataView }
         }

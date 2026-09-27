@@ -171,6 +171,25 @@ def test_android_compose_shell_uses_material_navigation_and_real_overview() -> N
     assert '"/api/v1/statistics/timeline?period=$grouping&$query"' in app
 
 
+def test_android_compose_transactions_cover_search_crud_sources_and_trash() -> None:
+    app = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeApp.kt"
+    ).read_text(encoding="utf-8")
+    transactions = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeTransactions.kt"
+    ).read_text(encoding="utf-8")
+    assert "ComposeTransactions(client" in app
+    assert 'page_size=30&search=' in transactions
+    assert '"GET", "/api/v1/sources"' in transactions
+    assert 'mutate("POST", "/api/v1/transactions"' in transactions
+    assert 'mutate("PATCH", "/api/v1/transactions/${item.id}"' in transactions
+    assert 'mutate("DELETE", "/api/v1/transactions/${item.id}"' in transactions
+    assert "/api/v1/deleted-transactions" in transactions
+    assert '}/restore"' in transactions
+    for component in ("LazyColumn", "OutlinedTextField", "AlertDialog", "FilterChip"):
+        assert component in transactions
+
+
 def test_native_android_overview_uses_async_core_client() -> None:
     client = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeLedgerClient.kt"
