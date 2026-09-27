@@ -134,3 +134,10 @@ def test_native_android_data_surface_keeps_platform_file_boundaries() -> None:
     assert "/api/v1/imports" in source
     assert "fun acceptFiles(" in source
     assert "来源账户" in source
+    activity = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/MainActivity.kt"
+    ).read_text(encoding="utf-8")
+    assert "MainActivity : ComponentActivity(), NativeDataView.Host" in activity
+    assert "nativeDataView?.acceptFiles(nativeFiles, nativeSkipped)" in activity
+    assert "override fun exportTransactions(format: String)" in activity
+    assert "override fun exportPortableArchive()" in activity
