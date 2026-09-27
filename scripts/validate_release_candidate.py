@@ -45,6 +45,8 @@ def validate_candidate(repository: Path, tag: str, artifacts: Path | None = None
         _require_exact(names, f"{installer}.signature.json")
     _require_exact(names, f"{native['linux']}.asc")
     _require_exact(names, "FinancialBeancount-linux-release-keyring.gpg")
+    android = _require_one(names, rf"FinancialBeancount-android-{re.escape(version)}\.apk")
+    _require_exact(names, f"{android}.sha256")
     expected = set(archives) | {
         *(f"{archive}.sha256" for archive in archives),
         *(f"{archive}.sha256.sig" for archive in archives),
@@ -52,6 +54,8 @@ def validate_candidate(repository: Path, tag: str, artifacts: Path | None = None
         *(f"{installer}.signature.json" for installer in native.values()),
         f"{native['linux']}.asc",
         "FinancialBeancount-linux-release-keyring.gpg",
+        android,
+        f"{android}.sha256",
     }
     unexpected = sorted(set(names) - expected)
     if unexpected:

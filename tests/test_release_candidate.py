@@ -38,6 +38,8 @@ def _assets(path: Path) -> None:
     names += [
         "FinancialBeancount-linux-X64.AppImage.asc",
         "FinancialBeancount-linux-release-keyring.gpg",
+        "FinancialBeancount-android-1.2.3.apk",
+        "FinancialBeancount-android-1.2.3.apk.sha256",
     ]
     for name in names:
         (path / name).write_bytes(b"asset")
@@ -50,7 +52,7 @@ def test_candidate_requires_exact_source_version_and_complete_assets(tmp_path: P
 
     names = validate_candidate(repository, "v1.2.3", artifacts)
 
-    assert len(names) == 17
+    assert len(names) == 19
 
 
 @pytest.mark.parametrize("tag", ["1.2.3", "v1.2", "v1.2.4", "v1.2.3-rc1"])
@@ -95,7 +97,9 @@ def test_workflow_creates_only_a_draft_after_signed_build() -> None:
     ).read_text(encoding="utf-8")
 
     assert "signed_release: true" in workflow
-    assert "needs: signed-build" in workflow
+    assert "signed-android:" in workflow
+    assert "needs: [signed-build, signed-android]" in workflow
+    assert "version_name: ${{ inputs.tag }}" in workflow
     assert "--draft" in workflow
     assert "contents: write" in workflow
     assert "release tag already exists" in workflow

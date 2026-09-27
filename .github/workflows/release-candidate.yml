@@ -26,8 +26,17 @@ jobs:
       signed_release: true
     secrets: inherit
 
+  signed-android:
+    needs: validate
+    uses: ./.github/workflows/android-build.yml
+    with:
+      release_build: true
+      version_name: ${{ inputs.tag }}
+      version_code: 0
+    secrets: inherit
+
   draft-release:
-    needs: signed-build
+    needs: [signed-build, signed-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write

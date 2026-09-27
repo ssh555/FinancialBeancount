@@ -1,6 +1,27 @@
 name: Android build
 
 on:
+  workflow_call:
+    inputs:
+      release_build:
+        required: true
+        type: boolean
+      version_name:
+        required: true
+        type: string
+      version_code:
+        required: false
+        type: number
+        default: 0
+    secrets:
+      FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE:
+        required: false
+      FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      FINANCIAL_BEANCOUNT_ANDROID_KEY_ALIAS:
+        required: false
+      FINANCIAL_BEANCOUNT_ANDROID_KEY_PASSWORD:
+        required: false
   workflow_dispatch:
     inputs:
       release_build:
@@ -14,10 +35,10 @@ on:
         type: string
         default: "0.2.0"
       version_code:
-        description: Strictly increasing positive Android version code
+        description: Positive Android version code; 0 derives it from the semantic version
         required: true
         type: number
-        default: 1
+        default: 0
 
 permissions:
   contents: read
@@ -36,16 +57,27 @@ jobs:
           gradle-version: "8.11.1"
       - name: Validate requested version
         shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version_name }}
+          REQUESTED_CODE: ${{ inputs.version_code }}
         run: |
-          [[ "${{ inputs.version_name }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "${{ inputs.version_code }}" =~ ^[1-9][0-9]*$ ]]
+          version="${REQUESTED_VERSION#v}"
+          [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]
+          code="$REQUESTED_CODE"
+          if [[ "$code" == "0" ]]; then
+            code=$((10#${BASH_REMATCH[1]} * 1000000 + 10#${BASH_REMATCH[2]} * 1000 + 10#${BASH_REMATCH[3]}))
+          fi
+          [[ "$code" =~ ^[1-9][0-9]*$ ]]
+          [[ "$code" -le 2100000000 ]]
+          echo "APP_VERSION_NAME=$version" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$code" >> "$GITHUB_ENV"
       - name: Build debug APK
         if: ${{ !inputs.release_build }}
         working-directory: android
         run: gradle --no-daemon :app:assembleDebug
         env:
-          ORG_GRADLE_PROJECT_appVersionName: ${{ inputs.version_name }}
-          ORG_GRADLE_PROJECT_appVersionCode: ${{ inputs.version_code }}
+          ORG_GRADLE_PROJECT_appVersionName: ${{ env.APP_VERSION_NAME }}
+          ORG_GRADLE_PROJECT_appVersionCode: ${{ env.APP_VERSION_CODE }}
       - name: Prepare protected Android signing identity
         if: ${{ inputs.release_build }}
         shell: bash
@@ -65,8 +97,8 @@ jobs:
         working-directory: android
         shell: bash
         env:
-          ORG_GRADLE_PROJECT_appVersionName: ${{ inputs.version_name }}
-          ORG_GRADLE_PROJECT_appVersionCode: ${{ inputs.version_code }}
+          ORG_GRADLE_PROJECT_appVersionName: ${{ env.APP_VERSION_NAME }}
+          ORG_GRADLE_PROJECT_appVersionCode: ${{ env.APP_VERSION_CODE }}
           ORG_GRADLE_PROJECT_releaseStoreFile: ${{ runner.temp }}/financial-beancount.keystore
           ORG_GRADLE_PROJECT_releaseStorePassword: ${{ secrets.FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE_PASSWORD }}
           ORG_GRADLE_PROJECT_releaseKeyAlias: ${{ secrets.FINANCIAL_BEANCOUNT_ANDROID_KEY_ALIAS }}
@@ -74,8 +106,8 @@ jobs:
         run: |
           gradle --no-daemon :app:assembleRelease
           "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
-          mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk"
-          sha256sum "app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk" > "app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk.sha256"
+          mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/FinancialBeancount-android-$APP_VERSION_NAME.apk"
+          sha256sum "app/build/outputs/apk/release/FinancialBeancount-android-$APP_VERSION_NAME.apk" > "app/build/outputs/apk/release/FinancialBeancount-android-$APP_VERSION_NAME.apk.sha256"
       - name: Remove temporary signing identity
         if: ${{ always() && inputs.release_build }}
         shell: bash
@@ -89,8 +121,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: ${{ inputs.release_build }}
         with:
-          name: FinancialBeancount-android-release-${{ inputs.version_name }}
+          name: FinancialBeancount-android-release-${{ env.APP_VERSION_NAME }}
           path: |
-            android/app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk
-            android/app/build/outputs/apk/release/FinancialBeancount-android-${{ inputs.version_name }}.apk.sha256
+            android/app/build/outputs/apk/release/FinancialBeancount-android-${{ env.APP_VERSION_NAME }}.apk
+            android/app/build/outputs/apk/release/FinancialBeancount-android-${{ env.APP_VERSION_NAME }}.apk.sha256
           if-no-files-found: error

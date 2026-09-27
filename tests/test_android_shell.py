@@ -69,12 +69,15 @@ def test_web_client_uses_native_bridge_before_http_fetch() -> None:
 def test_android_workflow_builds_debug_or_fail_closed_signed_apk() -> None:
     workflow = (ROOT / ".github/workflows/android-build.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
+    assert "workflow_call:" in workflow
     assert "push:" not in workflow
     assert ":app:assembleDebug" in workflow
     assert "app-debug.apk" in workflow
     assert ":app:assembleRelease" in workflow
     assert "apksigner" in workflow
     assert "sha256sum" in workflow
+    assert 'version="${REQUESTED_VERSION#v}"' in workflow
+    assert "1000000" in workflow and "1000" in workflow
     for secret in (
         "FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE",
         "FINANCIAL_BEANCOUNT_ANDROID_KEYSTORE_PASSWORD",

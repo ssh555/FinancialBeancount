@@ -6,8 +6,8 @@ The repository does not currently publish GitHub Releases. The desktop workflow 
 artifacts only; a successful workflow run is not permission to publish them.
 
 The manually dispatched `release-candidate.yml` workflow is the only automated Release-creation
-path. It requires an exact `vMAJOR.MINOR.PATCH` tag matching the source version, invokes all three
-signed platform jobs, downloads their artifacts, rejects missing, duplicate or unexpected assets,
+path. It requires an exact `vMAJOR.MINOR.PATCH` tag matching the source version, invokes the three
+signed desktop platform jobs plus Android, downloads their artifacts, rejects missing, duplicate or unexpected assets,
 and creates a **draft** GitHub Release targeting the exact validated commit. It never publishes the
 draft. The actual publisher must review the notes, asset inventory and signature results in GitHub
 before manually publishing it.
@@ -241,7 +241,8 @@ positive run with the real publisher key remains required.
 `Android build` produces either a development debug APK or, when `release_build` is enabled, a
 publisher-signed APK and SHA-256 file. Signed mode requires all four Android secrets above and fails
 closed when any is missing; the keystore exists only in the runner temporary directory and is removed
-afterward. Every later build must retain the same application ID and signing identity while increasing
+afterward. The release-candidate workflow includes this APK in the same draft Release and derives the
+default version code as `major * 1,000,000 + minor * 1,000 + patch`. Every later build must retain the same application ID and signing identity while increasing
 `version_code`, allowing Android to install it over the existing application without deleting its
 private ledger. Android security may require one uninstall when moving from an older randomly signed
 debug build to the fixed publisher identity; after that fixed-signing baseline, neither manual APK nor
