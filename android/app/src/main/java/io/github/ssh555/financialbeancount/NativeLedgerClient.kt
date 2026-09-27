@@ -28,7 +28,11 @@ class NativeLedgerClient(context: Context) : AutoCloseable {
                 val request = JSONObject().put("method", method).put("target", target)
                 if (body != null) request.put("body", body)
                 val database = appContext.getDatabasePath("ledger.sqlite3").absolutePath
-                JSONObject(module.callAttr("dispatch", database, request.toString()).toString())
+                val response = JSONObject(module.callAttr("dispatch", database, request.toString()).toString())
+                if (response.getInt("status") !in 200..299) {
+                    error(response.optJSONObject("body")?.optJSONObject("error")?.optString("message") ?: "本地账本请求失败")
+                }
+                response
             }
             main.post { callback(result) }
         }

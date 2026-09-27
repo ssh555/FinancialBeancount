@@ -92,3 +92,8 @@ def test_native_android_transactions_are_paginated_and_searchable() -> None:
     assert "URLEncoder.encode" in source
     assert 'more.text = "加载更多"' in source
     assert '"GET", "/api/v1/transactions/$id"' in source
+    assert 'text = "记一笔"' in source
+    assert 'mutate("PATCH"' in source
+    assert 'mutate("DELETE"' in source
+    assert "/api/v1/deleted-transactions" in source
+    assert '}/restore"' in source
