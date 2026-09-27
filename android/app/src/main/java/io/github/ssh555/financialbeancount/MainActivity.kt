@@ -1,32 +1,18 @@
 package io.github.ssh555.financialbeancount
 
-import android.annotation.SuppressLint
-import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
-import android.webkit.JavascriptInterface
-import android.webkit.JsResult
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.documentfile.provider.DocumentFile
-import androidx.webkit.WebViewClientCompat
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
-import java.io.ByteArrayInputStream
-import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
-private const val APP_ORIGIN = "https://appassets.androidplatform.net"
 private const val MAX_IMPORT_BYTES = 50L * 1024 * 1024
 private const val MAX_ARCHIVE_BYTES = 200L * 1024 * 1024
 private val IMPORT_SUFFIXES = setOf("csv", "xlsx", "pdf")
@@ -36,9 +22,8 @@ private data class PendingExport(val filename: String, val mimeType: String, val
 
 class MainActivity : ComponentActivity(), NativeDataView.Host {
     private lateinit var bridge: PyObject
-    private lateinit var webView: WebView
+    private lateinit var nativeClient: NativeLedgerClient
     private var nativeDataView: NativeDataView? = null
-    private val requestExecutor = Executors.newFixedThreadPool(3)
     @Volatile private var pendingExport: PendingExport? = null
 
     private val singleFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -116,103 +101,19 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!Python.isStarted()) Python.start(AndroidPlatform(this))
         bridge = Python.getInstance().getModule("beancount_dedup.android_bridge")
-
-        webView = WebView(this)
-        setContentView(webView)
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            allowFileAccess = false
-            allowContentAccess = false
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        }
-        webView.addJavascriptInterface(LedgerJavascriptBridge(), "FinancialBeancountNative")
-        webView.webChromeClient = LocalChromeClient()
-        webView.webViewClient = LocalOnlyClient()
-        webView.loadUrl("$APP_ORIGIN/index.html")
+        nativeClient = NativeLedgerClient(this)
+        val application = NativeAppView(this, nativeClient, this)
+        nativeDataView = application.dataView
+        setContentView(application)
     }
 
     override fun onDestroy() {
-        requestExecutor.shutdownNow()
-        webView.removeJavascriptInterface("FinancialBeancountNative")
-        webView.destroy()
+        nativeClient.close()
         super.onDestroy()
-    }
-
-    private inner class LedgerJavascriptBridge {
-        @JavascriptInterface
-        fun request(requestJson: String): String {
-            val database = getDatabasePath("ledger.sqlite3").absolutePath
-            return bridge.callAttr("dispatch", database, requestJson).toString()
-        }
-
-        @JavascriptInterface
-        fun requestAsync(requestId: String, requestJson: String) {
-            requestExecutor.execute {
-                val response = try {
-                    request(requestJson)
-                } catch (error: Exception) {
-                    JSONObject()
-                        .put("status", 500)
-                        .put(
-                            "body",
-                            JSONObject().put(
-                                "error",
-                                JSONObject().put("message", error.message ?: "本地账本请求失败"),
-                            ),
-                        )
-                        .toString()
-                }
-                webView.post {
-                    webView.evaluateJavascript(
-                        "globalThis.resolveNativeRequest(${JSONObject.quote(requestId)}, ${JSONObject.quote(response)})",
-                        null,
-                    )
-                }
-            }
-        }
-
-        @JavascriptInterface
-        fun pickSingleFile() = runOnUiThread { singleFilePicker.launch(arrayOf("*/*")) }
-
-        @JavascriptInterface
-        fun pickMultipleFiles() = runOnUiThread { multipleFilePicker.launch(arrayOf("*/*")) }
-
-        @JavascriptInterface
-        fun pickFolder() = runOnUiThread { folderPicker.launch(null) }
-
-        @JavascriptInterface
-        fun pickPortableArchive() = runOnUiThread {
-            archivePicker.launch(arrayOf("application/zip", "application/octet-stream"))
-        }
-
-        @JavascriptInterface
-        @Synchronized
-        fun saveDocument(filename: String, mimeType: String, contentBase64: String): Boolean {
-            if (pendingExport != null) return false
-            pendingExport = PendingExport(filename, mimeType, contentBase64)
-            runOnUiThread {
-                try {
-                    exportPicker.launch(
-                        Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = mimeType
-                            putExtra(Intent.EXTRA_TITLE, filename)
-                        },
-                    )
-                } catch (error: Exception) {
-                    pendingExport = null
-                    reportExportResult(false, error.message ?: "无法打开保存界面")
-                }
-            }
-            return true
-        }
     }
 
     private fun writeExport(uri: Uri, export: PendingExport) {
@@ -249,26 +150,12 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
         }
     }
 
-    private fun reportArchiveImportResult(success: Boolean, message: String) {
+    private fun reportArchiveImportResult(@Suppress("UNUSED_PARAMETER") success: Boolean, message: String) {
         nativeDataView?.post { nativeDataView?.showProgress(message) }
-        if (nativeDataView != null) return
-        webView.post {
-            webView.evaluateJavascript(
-                "globalThis.reportNativeArchiveImportResult($success, ${JSONObject.quote(message)})",
-                null,
-            )
-        }
     }
 
-    private fun reportExportResult(success: Boolean, message: String) {
+    private fun reportExportResult(@Suppress("UNUSED_PARAMETER") success: Boolean, message: String) {
         nativeDataView?.post { nativeDataView?.showProgress(message) }
-        if (nativeDataView != null) return
-        webView.post {
-            webView.evaluateJavascript(
-                "globalThis.reportNativeExportResult($success, ${JSONObject.quote(message)})",
-                null,
-            )
-        }
     }
 
     private fun importSelectedUris(uris: List<Uri>) {
@@ -302,8 +189,6 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
     private fun deliverSelectedDocuments(documents: List<SelectedDocument>) {
         val nativeFiles = mutableListOf<NativeDataView.SelectedFile>()
         val nativeSkipped = mutableListOf<NativeDataView.QueueItem>()
-        val files = JSONArray()
-        val skipped = JSONArray()
         documents.forEach { selected ->
             val document = selected.document
             val name = document.name ?: selected.relativePath
@@ -315,7 +200,6 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
                 else -> null
             }
             if (reason != null) {
-                skipped.put(JSONObject().put("name", selected.relativePath).put("reason", reason))
                 nativeSkipped += NativeDataView.QueueItem(selected.relativePath, "未处理", reason)
                 return@forEach
             }
@@ -323,25 +207,12 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
                 val bytes = contentResolver.openInputStream(document.uri)?.use { it.readBytes() }
                     ?: error("无法打开文件")
                 if (bytes.size > MAX_IMPORT_BYTES) error("文件超过 50 MiB")
-                files.put(
-                    JSONObject()
-                        .put("name", name)
-                        .put("relativePath", selected.relativePath)
-                        .put("size", bytes.size)
-                        .put("lastModified", document.lastModified())
-                        .put("contentBase64", Base64.encodeToString(bytes, Base64.NO_WRAP)),
-                )
                 nativeFiles += NativeDataView.SelectedFile(
                     name,
                     selected.relativePath,
                     Base64.encodeToString(bytes, Base64.NO_WRAP),
                 )
             } catch (error: Exception) {
-                skipped.put(
-                    JSONObject()
-                        .put("name", selected.relativePath)
-                        .put("reason", error.message ?: "无法读取文件"),
-                )
                 nativeSkipped += NativeDataView.QueueItem(
                     selected.relativePath,
                     "未处理",
@@ -352,17 +223,9 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
         nativeDataView?.post {
             nativeDataView?.acceptFiles(nativeFiles, nativeSkipped)
         }
-        if (nativeDataView != null) return
-        val payload = JSONObject().put("files", files).put("skipped", skipped).toString()
-        webView.post {
-            webView.evaluateJavascript(
-                "globalThis.acceptNativeImportFiles(${JSONObject.quote(payload)})",
-                null,
-            )
-        }
     }
 
-    private fun transactionCsv(rows: JSONArray): String {
+    private fun transactionCsv(rows: org.json.JSONArray): String {
         val columns = listOf(
             "canonical_id", "booking_date", "transaction_time", "amount", "direction",
             "merchant", "category", "payment_channel", "funding_account", "tx_type",
@@ -378,56 +241,4 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
         }
     }
 
-    private inner class LocalChromeClient : WebChromeClient() {
-        override fun onJsConfirm(
-            view: WebView,
-            url: String,
-            message: String,
-            result: JsResult,
-        ): Boolean {
-            AlertDialog.Builder(this@MainActivity)
-                .setMessage(message)
-                .setPositiveButton("继续") { _, _ -> result.confirm() }
-                .setNegativeButton("取消") { _, _ -> result.cancel() }
-                .setOnCancelListener { result.cancel() }
-                .show()
-            return true
-        }
-    }
-
-    private inner class LocalOnlyClient : WebViewClientCompat() {
-        override fun shouldInterceptRequest(
-            view: WebView,
-            request: WebResourceRequest,
-        ): WebResourceResponse? {
-            if (request.url.scheme != "https" || request.url.host != "appassets.androidplatform.net") {
-                return blockedResponse()
-            }
-            val path = request.url.path ?: "/"
-            return try {
-                val bytes = bridge.callAttr("web_asset", path).toJava(ByteArray::class.java)
-                val contentType = bridge.callAttr("web_asset_content_type", path).toString()
-                val parts = contentType.split(";", limit = 2)
-                WebResourceResponse(
-                    parts[0],
-                    if (parts.size == 2) "UTF-8" else null,
-                    ByteArrayInputStream(bytes),
-                )
-            } catch (_: Exception) {
-                blockedResponse()
-            }
-        }
-
-        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-            request.url.scheme != "https" || request.url.host != "appassets.androidplatform.net"
-
-        private fun blockedResponse() = WebResourceResponse(
-            "text/plain",
-            "UTF-8",
-            404,
-            "Not Found",
-            mapOf("Cache-Control" to "no-store"),
-            ByteArrayInputStream(ByteArray(0)),
-        )
-    }
 }

@@ -12,10 +12,7 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
 
     assert "android.permission.INTERNET" not in manifest
     assert 'android:usesCleartextTraffic="false"' in manifest
-    assert "allowFileAccess = false" in activity
-    assert "allowContentAccess = false" in activity
-    assert "MIXED_CONTENT_NEVER_ALLOW" in activity
-    assert "appassets.androidplatform.net" in activity
+    assert "WebView" not in activity
     assert 'srcDir(layout.buildDirectory.dir("generated/python"))' in build
     assert 'from(rootProject.projectDir.parentFile.resolve("beancount_dedup"))' in build
     assert 'endsWith("PythonSources")' in build
@@ -26,15 +23,23 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert "DocumentFile.fromTreeUri" in activity
     assert "Intent.ACTION_CREATE_DOCUMENT" in activity
     assert "contentResolver.openOutputStream" in activity
-    assert "fun saveDocument(" in activity
-    assert "fun pickPortableArchive()" in activity
     assert "bridge.callAttr(" in activity and '"restore_archive"' in activity
-    assert "webView.webChromeClient = LocalChromeClient()" in activity
-    assert "override fun onJsConfirm(" in activity
-    assert 'setPositiveButton("继续")' in activity
-    assert "fun requestAsync(" in activity
-    assert "Executors.newFixedThreadPool(3)" in activity
     assert "androidx.documentfile:documentfile" in build
+
+
+def test_android_launches_native_mobile_navigation() -> None:
+    activity = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/MainActivity.kt"
+    ).read_text(encoding="utf-8")
+    shell = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeAppView.kt"
+    ).read_text(encoding="utf-8")
+    assert "NativeAppView(this, nativeClient, this)" in activity
+    assert "setContentView(application)" in activity
+    for page in ("概览", "交易", "审核", "数据"):
+        assert f'"{page}"' in shell
+    assert "ScrollView" in shell
+    assert "minHeight = dp(56)" in shell
 
 
 def test_web_client_uses_native_bridge_before_http_fetch() -> None:
