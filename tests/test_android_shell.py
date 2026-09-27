@@ -29,7 +29,8 @@ def test_android_shell_reuses_core_and_limits_network_to_updates() -> None:
     assert "androidx.documentfile:documentfile" in build
 
     updater = (
-        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/AndroidUpdateManager.kt"
+        ROOT
+        / "android/app/src/main/java/io/github/ssh555/financialbeancount/AndroidUpdateManager.kt"
     ).read_text(encoding="utf-8")
     assert "api.github.com/repos/ssh555/FinancialBeancount/releases/latest" in updater
     assert 'optBoolean("draft")' in updater and 'optBoolean("prerelease")' in updater

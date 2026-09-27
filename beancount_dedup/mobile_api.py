@@ -422,7 +422,9 @@ class MobileLedgerApi:
             if attention == "required"
             else "confirmed"
             if attention in {"warning", "acknowledged"}
-            else None if status == "all" else status
+            else None
+            if status == "all"
+            else status
         )
         candidates = self.refund_review.list_candidates(status_filter)
         if attention == "warning":
@@ -486,7 +488,9 @@ class MobileLedgerApi:
             if not isinstance(reason, str):
                 raise TypeError("reason must be a string")
             events = self.refund_review.exclude_refund(relationship_id, actor, reason.strip())
-            return self._ok({"excluded": True, "events": [_refund_event_dict(item) for item in events]})
+            return self._ok(
+                {"excluded": True, "events": [_refund_event_dict(item) for item in events]}
+            )
         return self._error(HTTPStatus.NOT_FOUND, "not_found", "API route not found")
 
     def _list_classifications(self, query: dict[str, list[str]]) -> ApiResponse:

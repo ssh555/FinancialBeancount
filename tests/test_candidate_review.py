@@ -27,9 +27,7 @@ def raw(
     return RawTransaction(
         source=source,
         source_account=f"account-{identity}",
-        transaction_time=(
-            datetime(2026, 6, 1, 12, 0) if source != Platform.BANK else bank_time
-        ),
+        transaction_time=(datetime(2026, 6, 1, 12, 0) if source != Platform.BANK else bank_time),
         booking_date=date(2026, 6, 1),
         amount="-20.00",
         direction="expense",

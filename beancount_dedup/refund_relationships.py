@@ -232,7 +232,8 @@ class RefundRelationshipService:
         return (
             not _orders_match(refund, original),
             (refund.booking_date - original.booking_date).days,
-            original.transaction_time or datetime.combine(original.booking_date, datetime.min.time()),
+            original.transaction_time
+            or datetime.combine(original.booking_date, datetime.min.time()),
             original.canonical_id,
         )
 
@@ -350,7 +351,9 @@ class RefundRelationshipService:
             self._insert_event(connection, event)
         return event
 
-    def exclude_refund(self, relationship_id: str, actor: str, reason: str) -> list[RefundReviewEvent]:
+    def exclude_refund(
+        self, relationship_id: str, actor: str, reason: str
+    ) -> list[RefundReviewEvent]:
         """Reject every pending relationship and soft-delete the reviewed refund transaction."""
 
         candidate = self._get(relationship_id)
