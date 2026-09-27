@@ -6,6 +6,7 @@ import argparse
 import json
 from collections import Counter
 from decimal import Decimal
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -127,10 +128,14 @@ def _bank_balance_collisions(store: LedgerStore) -> list[dict[str, Any]]:
         descriptions = {_normalized(row["description"]) for row in rows if row["description"]}
         same_counterparty = len(counterparties) == 1 and len(counterparties) > 0
         same_description = len(descriptions) == 1 and len(descriptions) > 0
+        interleaved_reversal = _has_interleaved_reversal(store, rows, Decimal(group["amount"]))
         priority = (
             "high"
-            if (same_counterparty and same_description)
-            or (same_description and abs(Decimal(group["amount"])) >= Decimal("1000"))
+            if not interleaved_reversal
+            and (
+                (same_counterparty and same_description)
+                or (same_description and abs(Decimal(group["amount"])) >= Decimal("1000"))
+            )
             else "review"
         )
         result.append(
@@ -143,6 +148,7 @@ def _bank_balance_collisions(store: LedgerStore) -> list[dict[str, Any]]:
                 "priority": priority,
                 "same_description": same_description,
                 "same_counterparty": same_counterparty,
+                "interleaved_reversal": interleaved_reversal,
                 "rows": [dict(row) for row in rows],
             }
         )
@@ -151,6 +157,31 @@ def _bank_balance_collisions(store: LedgerStore) -> list[dict[str, Any]]:
 
 def _normalized(value: str) -> str:
     return "".join(value.lower().split())
+
+
+def _has_interleaved_reversal(
+    store: LedgerStore, rows: list[Any], amount: Decimal
+) -> bool:
+    for left, right in pairwise(rows):
+        if left["source_file"] != right["source_file"]:
+            continue
+        between = store.connection.execute(
+            """
+            SELECT 1 FROM raw_transactions
+            WHERE source_file = ? AND raw_row_number > ? AND raw_row_number < ?
+              AND CAST(amount AS NUMERIC) = ?
+            LIMIT 1
+            """,
+            (
+                left["source_file"],
+                left["raw_row_number"],
+                right["raw_row_number"],
+                str(-amount),
+            ),
+        ).fetchone()
+        if between:
+            return True
+    return False
 
 
 def _investment_scope(description: str, counterparty: str) -> str:

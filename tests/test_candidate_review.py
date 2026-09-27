@@ -16,11 +16,20 @@ def store(tmp_path):
         yield ledger_store
 
 
-def raw(source: Platform, identity: str, *, merchant: str, suffix: str | None):
+def raw(
+    source: Platform,
+    identity: str,
+    *,
+    merchant: str,
+    suffix: str | None,
+    bank_time: datetime | None = None,
+):
     return RawTransaction(
         source=source,
         source_account=f"account-{identity}",
-        transaction_time=datetime(2026, 6, 1, 12, 0) if source != Platform.BANK else None,
+        transaction_time=(
+            datetime(2026, 6, 1, 12, 0) if source != Platform.BANK else bank_time
+        ),
         booking_date=date(2026, 6, 1),
         amount="-20.00",
         direction="expense",
@@ -89,6 +98,29 @@ def test_confirm_creates_one_canonical_with_two_sources(store):
     assert event.action == "confirmed"
     assert event.after["canonical"]["source_count"] == 2
     assert service.get_group(candidate.candidate_id).candidate.status == "confirmed"
+
+
+def test_exact_payment_match_can_be_safely_confirmed_in_batch(store):
+    store.add_raw(raw(Platform.ALIPAY, "payment", merchant="高德打车", suffix="4000"))
+    store.add_raw(
+        raw(
+            Platform.BANK,
+            "bank",
+            merchant="高德信息技术有限公司",
+            suffix="6357",
+            bank_time=datetime(2026, 6, 1, 12, 0, 2),
+        )
+    )
+    ConservativeMatcher(store).generate_candidates()
+
+    confirmed = CandidateReviewService(store).confirm_exact_payment_matches("acceptance")
+
+    assert confirmed == 1
+    assert len(store.list_canonical()) == 1
+    canonical = store.get_canonical(store.list_canonical()[0].canonical_id)
+    assert canonical is not None
+    assert canonical.source_count == 2
+    assert canonical.tx_type.value == "expense"
 
 
 def test_modified_confirmation_and_conflicts_are_fully_audited(store):

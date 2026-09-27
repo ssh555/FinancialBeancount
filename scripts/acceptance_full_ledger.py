@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from beancount_dedup.candidate_review import CandidateReviewService
 from beancount_dedup.canonical_matcher import ConservativeMatcher
 from beancount_dedup.ledger_store import LedgerStore
 from beancount_dedup.portable_archive import (
@@ -108,6 +109,9 @@ def run_acceptance(bills_root: Path, output_directory: Path) -> dict[str, Any]:
                 results.append(failure)
 
         candidates = ConservativeMatcher(store).generate_candidates()
+        exact_payment_match_count = CandidateReviewService(store).confirm_exact_payment_matches(
+            "full-ledger-acceptance"
+        )
         safe_confirmed_count = ImportReviewService(store).confirm_unmatched_without_candidates(
             "full-ledger-acceptance"
         )
@@ -141,7 +145,9 @@ def run_acceptance(bills_root: Path, output_directory: Path) -> dict[str, Any]:
         "table_counts": counts,
         "restored_table_counts": restored_counts,
         "safe_confirmed_review_count": safe_confirmed_count,
-        "pending_match_candidate_count": len(candidates),
+        "exact_payment_match_count": exact_payment_match_count,
+        "pending_match_candidate_count": sum(item.status == "pending" for item in candidates)
+        - exact_payment_match_count,
         "files": [asdict(item) for item in results],
     }
     (output_directory / "acceptance-report.json").write_text(

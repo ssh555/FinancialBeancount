@@ -54,6 +54,25 @@ class CandidateReviewService:
             raise KeyError(candidate_id)
         return self._group(candidate, candidates)
 
+    def confirm_exact_payment_matches(self, actor: str) -> int:
+        """Confirm unambiguous same-bank matches with exact amount, direction, and time."""
+
+        confirmed = 0
+        for candidate in self.list_groups("pending"):
+            codes = {item.code for item in candidate.candidate.evidence}
+            if (
+                candidate.candidate.is_ambiguous
+                or candidate.conflicts
+                or "datetime_exact" not in codes
+                or "amount_exact" not in codes
+                or "direction_exact" not in codes
+                or "bank_name_exact" not in codes
+            ):
+                continue
+            self.confirm(candidate.candidate.candidate_id, actor)
+            confirmed += 1
+        return confirmed
+
     def reject(self, candidate_id: str, actor: str) -> CandidateReviewEvent:
         """Reject one proposed match while retaining both raw observations."""
 
@@ -212,6 +231,11 @@ class CandidateReviewService:
             "merchant": payment.merchant or payment.counterparty,
             "payment_channel": source_id_value(payment.source),
             "funding_account": group.bank.source_account,
+            "tx_type": (
+                TransactionType.EXPENSE
+                if payment.direction == "expense" or payment.amount < 0
+                else TransactionType.INCOME
+            ),
             "status": payment.status,
             "review_status": ReviewStatus.CONFIRMED,
         }
