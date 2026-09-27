@@ -1,6 +1,5 @@
 package io.github.ssh555.financialbeancount
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -12,6 +11,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONObject
 import java.io.File
 import kotlin.concurrent.thread
@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
                 val update = manager.check()
                 runOnUiThread {
                     if (update == null) nativeDataView?.showProgress("当前已是最新版本（${BuildConfig.VERSION_NAME}）")
-                    else AlertDialog.Builder(this)
+                    else MaterialAlertDialogBuilder(this)
                         .setTitle("发现新版本 ${update.version}")
                         .setMessage("下载大小：${update.apkSize / 1024 / 1024.0} MiB\n\n${update.notes.take(1200)}")
                         .setPositiveButton("下载并更新") { _, _ -> downloadAndInstall(update) }

@@ -1,8 +1,9 @@
 package io.github.ssh555.financialbeancount
 
-import android.app.AlertDialog
 import android.content.Context
+import android.content.DialogInterface
 import android.graphics.Typeface
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -10,9 +11,13 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
-import android.widget.Spinner
 import android.widget.ArrayAdapter
 import android.widget.TextView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.text.NumberFormat
@@ -72,14 +77,7 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
                 if (reset && rows.length() == 0) list.addView(message("没有符合条件的交易"))
                 for (index in 0 until rows.length()) {
                     val item = rows.getJSONObject(index)
-                    list.addView(Button(context).apply {
-                        isAllCaps = false
-                        minHeight = dp(64)
-                        gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                        text = "${item.optString("merchant", "未命名交易")}   ${money(item.getString("amount"))}\n${item.getString("booking_date")} · ${item.optString("category", "未分类")}"
-                        contentDescription = "打开交易详情"
-                        setOnClickListener { showDetail(item.getString("canonical_id")) }
-                    })
+                    list.addView(transactionCard(item))
                 }
                 loaded += rows.length()
                 more.visibility = if (loaded < total) View.VISIBLE else View.GONE
@@ -93,60 +91,91 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
         client.request("GET", "/api/v1/transactions/$id") { result ->
             result.onSuccess { response ->
                 val item = response.getJSONObject("body").getJSONObject("data")
-                AlertDialog.Builder(context).setTitle(item.optString("merchant", "交易详情"))
-                    .setMessage("日期：${item.optString("booking_date")}\n金额：${money(item.optString("amount", "0"))}\n分类：${item.optString("category", "未分类")}\n备注：${item.optString("notes", "")}")
+                val details = LinearLayout(context).apply {
+                    orientation = VERTICAL
+                    setPadding(dp(24), dp(4), dp(24), dp(4))
+                    addView(detailRow("金额", money(item.optString("amount", "0")), featured = true))
+                    addView(detailRow("日期", item.optString("booking_date", "—")))
+                    addView(detailRow("分类", item.optString("category", "未分类").ifBlank { "未分类" }))
+                    addView(detailRow("备注", item.optString("notes", "").ifBlank { "无" }))
+                }
+                MaterialAlertDialogBuilder(context).setTitle(item.optString("merchant", "交易详情"))
+                    .setView(details)
                     .setPositiveButton("编辑") { _, _ -> showEditor(item) }
                     .setNeutralButton("删除") { _, _ -> confirmDelete(id) }
                     .setNegativeButton("关闭", null).show()
-            }.onFailure { AlertDialog.Builder(context).setMessage(it.message ?: "详情加载失败").setPositiveButton("关闭", null).show() }
+            }.onFailure { showErrorDialog(it.message ?: "详情加载失败") }
         }
     }
 
     private fun showEditor(item: JSONObject?) {
-        val fields = LinearLayout(context).apply { orientation = VERTICAL; setPadding(dp(18), 0, dp(18), 0) }
-        val date = input("日期 YYYY-MM-DD", item?.optString("booking_date"))
-        val amount = input("金额，支出填负数", item?.optString("amount"))
+        val fields = LinearLayout(context).apply { orientation = VERTICAL; setPadding(dp(20), 0, dp(20), dp(8)) }
+        val date = input("交易日期", item?.optString("booking_date"), InputType.TYPE_CLASS_DATETIME)
+        date.layout.helperText = "格式：YYYY-MM-DD"
+        val amount = input("金额", item?.optString("amount"), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED)
         val merchant = input("商户", item?.optString("merchant"))
         val category = input("分类", item?.optString("category"))
-        val notes = input("备注", item?.optString("notes"))
-        val direction = Spinner(context).apply {
-            adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, listOf("支出", "收入"))
-            setSelection(if (item?.optString("direction") == "income") 1 else 0)
+        val notes = input("备注（可选）", item?.optString("notes"), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        val direction = MaterialAutoCompleteTextView(context).apply {
+            setAdapter(ArrayAdapter(context, android.R.layout.simple_dropdown_item_1line, listOf("支出", "收入")))
+            setText(if (item?.optString("direction") == "income") "收入" else "支出", false)
         }
-        listOf(date, amount, merchant, category, direction, notes).forEach(fields::addView)
-        AlertDialog.Builder(context)
+        val directionLayout = TextInputLayout(context).apply {
+            hint = "收支类型"
+            endIconMode = TextInputLayout.END_ICON_DROPDOWN_MENU
+            addView(direction, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }
+        listOf(date.layout, amount.layout, directionLayout, merchant.layout, category.layout, notes.layout).forEach {
+            fields.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(5), 0, dp(5)) })
+        }
+        val dialog = MaterialAlertDialogBuilder(context)
             .setTitle(if (item == null) "新增交易" else "编辑交易")
             .setView(ScrollView(context).apply { addView(fields) })
-            .setPositiveButton("保存") { _, _ ->
-                val selectedDirection = if (direction.selectedItemPosition == 1) "income" else "expense"
+            .setPositiveButton("保存", null)
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                date.layout.error = null; amount.layout.error = null; merchant.layout.error = null
+                val dateValue = date.input.text.toString().trim()
+                val amountValue = amount.input.text.toString().trim()
+                val merchantValue = merchant.input.text.toString().trim()
+                val validDate = runCatching { java.time.LocalDate.parse(dateValue) }.isSuccess
+                val validAmount = amountValue.toBigDecimalOrNull()?.compareTo(java.math.BigDecimal.ZERO) != 0 && amountValue.toBigDecimalOrNull() != null
+                if (!validDate) date.layout.error = "请输入有效日期，例如 2026-09-27"
+                if (!validAmount) amount.layout.error = "请输入非零金额"
+                if (merchantValue.isBlank()) merchant.layout.error = "请填写商户或交易对象"
+                if (!validDate || !validAmount || merchantValue.isBlank()) return@setOnClickListener
+                val selectedDirection = if (direction.text.toString() == "收入") "income" else "expense"
                 if (item == null) {
                     val body = JSONObject()
-                        .put("booking_date", date.text.toString().trim())
-                        .put("amount", amount.text.toString().trim())
+                        .put("booking_date", dateValue)
+                        .put("amount", amountValue)
                         .put("direction", selectedDirection)
-                        .put("merchant", merchant.text.toString().trim())
-                        .put("category", category.text.toString().trim())
-                        .put("notes", notes.text.toString().trim())
+                        .put("merchant", merchantValue)
+                        .put("category", category.input.text.toString().trim())
+                        .put("notes", notes.input.text.toString().trim())
                         .put("tx_type", selectedDirection)
                         .put("actor", "android-user")
                     mutate("POST", "/api/v1/transactions", body)
                 } else {
                     val changes = JSONObject()
-                        .put("booking_date", date.text.toString().trim())
-                        .put("amount", amount.text.toString().trim())
+                        .put("booking_date", dateValue)
+                        .put("amount", amountValue)
                         .put("direction", selectedDirection)
-                        .put("merchant", merchant.text.toString().trim())
-                        .put("category", category.text.toString().trim())
-                        .put("notes", notes.text.toString().trim())
+                        .put("merchant", merchantValue)
+                        .put("category", category.input.text.toString().trim())
+                        .put("notes", notes.input.text.toString().trim())
                     mutate("PATCH", "/api/v1/transactions/${item.getString("canonical_id")}", JSONObject().put("actor", "android-user").put("changes", changes))
                 }
+                dialog.dismiss()
             }
-            .setNegativeButton("取消", null)
-            .show()
+        }
+        dialog.show()
     }
 
     private fun confirmDelete(id: String) {
-        AlertDialog.Builder(context).setTitle("移入回收站？")
+        MaterialAlertDialogBuilder(context).setTitle("移入回收站？")
             .setMessage("原始来源和审计记录会保留。")
             .setPositiveButton("删除") { _, _ ->
                 mutate("DELETE", "/api/v1/transactions/$id", JSONObject().put("actor", "android-user").put("reason", "user_deleted"))
@@ -167,23 +196,83 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
                     })
                 }
                 if (rows.length() == 0) content.addView(message("回收站为空"))
-                AlertDialog.Builder(context).setTitle("回收站").setView(ScrollView(context).apply { addView(content) }).setNegativeButton("关闭", null).show()
-            }.onFailure { AlertDialog.Builder(context).setMessage(it.message ?: "回收站加载失败").setPositiveButton("关闭", null).show() }
+                MaterialAlertDialogBuilder(context).setTitle("回收站").setView(ScrollView(context).apply { addView(content) }).setNegativeButton("关闭", null).show()
+            }.onFailure { showErrorDialog(it.message ?: "回收站加载失败") }
         }
     }
 
     private fun mutate(method: String, target: String, body: JSONObject) {
         client.request(method, target, body) { result ->
             result.onSuccess { reload() }
-                .onFailure { AlertDialog.Builder(context).setMessage(it.message ?: "操作失败").setPositiveButton("关闭", null).show() }
+                .onFailure { showErrorDialog(it.message ?: "操作失败") }
         }
     }
 
-    private fun input(hintText: String, value: String?) = EditText(context).apply {
-        hint = hintText
-        setText(value.orEmpty())
-        minHeight = dp(52)
+    private data class InputField(val layout: TextInputLayout, val input: TextInputEditText)
+
+    private fun input(label: String, value: String?, inputType: Int = InputType.TYPE_CLASS_TEXT): InputField {
+        val input = TextInputEditText(context).apply {
+            setText(value.orEmpty())
+            this.inputType = inputType
+            isSingleLine = label != "备注（可选）"
+        }
+        return InputField(TextInputLayout(context).apply {
+            hint = label
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+            addView(input, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }, input)
     }
+
+    private fun detailRow(label: String, value: String, featured: Boolean = false) = TextView(context).apply {
+        text = "$label\n$value"
+        textSize = if (featured) 20f else 15f
+        setTypeface(typeface, if (featured) Typeface.BOLD else Typeface.NORMAL)
+        setPadding(0, dp(9), 0, dp(9))
+    }
+
+    private fun transactionCard(item: JSONObject) = MaterialCardView(context).apply {
+        radius = dp(16).toFloat()
+        cardElevation = dp(1).toFloat()
+        strokeWidth = dp(1)
+        setStrokeColor(NativeUi.line)
+        setCardBackgroundColor(NativeUi.card)
+        isClickable = true
+        isFocusable = true
+        contentDescription = "打开 ${item.optString("merchant", "未命名交易")} 的交易详情"
+        setOnClickListener { showDetail(item.getString("canonical_id")) }
+        addView(LinearLayout(context).apply {
+            orientation = VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            addView(LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(context).apply {
+                    text = item.optString("merchant", "未命名交易").ifBlank { "未命名交易" }
+                    textSize = 16f
+                    setTypeface(typeface, Typeface.BOLD)
+                    maxLines = 1
+                }, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+                addView(TextView(context).apply {
+                    text = money(item.getString("amount"))
+                    textSize = 16f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(if (item.optString("direction") == "income") NativeUi.green else NativeUi.ink)
+                })
+            })
+            addView(TextView(context).apply {
+                text = "${item.getString("booking_date")} · ${item.optString("category", "未分类").ifBlank { "未分类" }}"
+                textSize = 13f
+                setTextColor(NativeUi.muted)
+                setPadding(0, dp(7), 0, 0)
+            })
+        })
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            setMargins(0, dp(5), 0, dp(5))
+        }
+    }
+
+    private fun showErrorDialog(message: String) = MaterialAlertDialogBuilder(context)
+        .setTitle("未能完成操作").setMessage(message).setPositiveButton("知道了", null).show()
 
     private fun message(value: String) = TextView(context).apply { text = value; gravity = Gravity.CENTER; setPadding(0, dp(32), 0, dp(32)) }
     private fun money(value: String) = NumberFormat.getCurrencyInstance(Locale.CHINA).format(value.toBigDecimal())

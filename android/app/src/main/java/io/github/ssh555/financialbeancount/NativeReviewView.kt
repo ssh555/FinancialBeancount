@@ -1,6 +1,5 @@
 package io.github.ssh555.financialbeancount
 
-import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Typeface
 import android.view.Gravity
@@ -11,6 +10,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -146,7 +146,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
     }
 
     private fun showDetail(type: String, item: JSONObject, endpoint: String) {
-        val builder = AlertDialog.Builder(context)
+        val builder = MaterialAlertDialogBuilder(context)
             .setTitle(title(type, item))
             .setMessage(item.toString(2))
             .setNegativeButton("关闭", null)
@@ -163,7 +163,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
             "classifications" -> "保留原分类"
             else -> "排除此项"
         }
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("选择处理方式")
             .setItems(arrayOf("修正信息", preserveLabel, "暂缓处理")) { dialog, index ->
                 when (index) {
@@ -185,7 +185,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
         val category = edit("分类", source?.optString("category"))
         val notes = edit("备注", source?.optString("notes"))
         listOf(merchant, category, notes).forEach(fields::addView)
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("人工修改并完成审核")
             .setView(fields)
             .setPositiveButton("保存") { _, _ ->
@@ -214,7 +214,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
         val category = edit("分类", source.optString("category"))
         val notes = edit("备注", source.optString("notes"))
         listOf(merchant, category, notes).forEach(fields::addView)
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("修正并入或排除")
             .setView(fields)
             .setPositiveButton("保存修正") { _, _ ->
@@ -230,7 +230,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
     }
 
     private fun confirmExclusion(reviewEndpoint: String) {
-        AlertDialog.Builder(context).setMessage("确认排除此账单？原始导入证据仍会保留，可从已删除记录恢复。")
+        MaterialAlertDialogBuilder(context).setMessage("确认排除此账单？原始导入证据仍会保留，可从已删除记录恢复。")
             .setPositiveButton("确认排除") { _, _ ->
                 client.request("POST", "$reviewEndpoint/exclude", JSONObject().put("actor", "android-user").put("reason", "人工审核排除")) { result ->
                     result.onSuccess { reload() }.onFailure { showError(it) }
@@ -239,7 +239,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
     }
 
     private fun decide(endpoint: String, action: String) {
-        AlertDialog.Builder(context).setMessage(if (action == "confirm") "确认这项审核决定？" else "拒绝这项建议？")
+        MaterialAlertDialogBuilder(context).setMessage(if (action == "confirm") "确认这项审核决定？" else "拒绝这项建议？")
             .setPositiveButton("继续") { _, _ ->
                 client.request("POST", "$endpoint/$action", JSONObject().put("actor", "android-user")) { result ->
                     result.onSuccess { reload() }.onFailure { showError(it) }

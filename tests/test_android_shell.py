@@ -175,6 +175,11 @@ def test_native_android_transactions_are_paginated_and_searchable() -> None:
     assert 'mutate("DELETE"' in source
     assert "/api/v1/deleted-transactions" in source
     assert '}/restore"' in source
+    assert "MaterialCardView" in source
+    assert "TextInputLayout" in source
+    assert "请输入有效日期" in source
+    assert "请输入非零金额" in source
+    assert "MaterialAlertDialogBuilder" in source
 
     source_filter = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/SourceFilterButton.kt"

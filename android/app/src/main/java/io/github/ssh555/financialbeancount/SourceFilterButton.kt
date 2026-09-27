@@ -1,8 +1,8 @@
 package io.github.ssh555.financialbeancount
 
-import android.app.AlertDialog
 import android.content.Context
 import android.widget.Button
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONArray
 import java.net.URLEncoder
 
@@ -27,7 +27,7 @@ class SourceFilterButton(
     private fun loadAndShow() {
         client.request("GET", "/api/v1/sources") { result ->
             result.onSuccess { response -> show(response.getJSONObject("body").getJSONArray("data")) }
-                .onFailure { AlertDialog.Builder(context).setMessage(it.message ?: "来源加载失败").setPositiveButton("关闭", null).show() }
+                .onFailure { MaterialAlertDialogBuilder(context).setTitle("来源加载失败").setMessage(it.message ?: "请稍后重试").setPositiveButton("知道了", null).show() }
         }
     }
 
@@ -47,7 +47,7 @@ class SourceFilterButton(
             values += "$source::${item.getString("source_account")}" 
         }
         val checked = BooleanArray(values.size) { values[it] in selected }
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("选择来源（可多选）")
             .setMultiChoiceItems(labels.toTypedArray(), checked) { _, index, value -> checked[index] = value }
             .setNeutralButton("清除") { _, _ -> selected.clear(); update() }

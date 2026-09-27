@@ -1,6 +1,5 @@
 package io.github.ssh555.financialbeancount
 
-import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Typeface
 import android.text.util.Linkify
@@ -11,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.ArrayAdapter
 import android.widget.TextView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONObject
 
 class NativeDataView(context: Context, private val client: NativeLedgerClient, private val host: Host) : LinearLayout(context) {
@@ -102,7 +102,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
     }
 
     private fun showImportMenu() {
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("导入官方账单")
             .setItems(arrayOf("选择一个文件", "选择多个文件", "选择文件夹")) { _, index ->
                 when (index) {
@@ -116,7 +116,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
     }
 
     private fun showArchiveMenu() {
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("备份与恢复")
             .setItems(arrayOf("导出完整归档", "从完整归档恢复")) { _, index ->
                 if (index == 0) host.exportPortableArchive() else confirmArchiveRestore()
@@ -126,7 +126,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
     }
 
     private fun confirmArchiveRestore() {
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("覆盖当前账本？")
             .setMessage("请先导出备份。恢复成功后，当前设备账本会被完整归档替换。")
             .setPositiveButton("继续") { _, _ -> host.restorePortableArchive() }
@@ -135,7 +135,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
     }
 
     private fun showExportMenu() {
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("导出交易")
             .setItems(arrayOf("CSV 表格", "JSON 数据")) { _, index -> host.exportTransactions(if (index == 0) "csv" else "json") }
             .setNegativeButton("取消", null)
@@ -148,7 +148,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
             setPadding(dp(20), dp(8), dp(20), dp(8))
             autoLinkMask = Linkify.WEB_URLS
         }
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("更新与关于")
             .setView(about)
             .setPositiveButton("检查更新") { _, _ -> host.checkForUpdates() }
@@ -170,11 +170,11 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
     }
 
     private fun confirmDeleteAll() {
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle("永久删除所有数据？")
             .setMessage("请先导出完整归档。此操作会删除账单、原始导入记录和审核记录，且无法撤销。")
             .setPositiveButton("继续") { _, _ ->
-                AlertDialog.Builder(context)
+                MaterialAlertDialogBuilder(context)
                     .setTitle("再次确认")
                     .setMessage("删除后本设备账本将恢复为空状态。")
                     .setPositiveButton("永久删除") { _, _ -> deleteAll() }
