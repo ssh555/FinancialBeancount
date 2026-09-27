@@ -21,6 +21,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         fun restorePortableArchive()
         fun exportTransactions(format: String)
         fun exportPortableArchive()
+        fun checkForUpdates()
     }
 
     private val queue = LinearLayout(context)
@@ -64,6 +65,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
             addView(action("导出 JSON") { host.exportTransactions("json") }, LayoutParams(0, dp(52), 1f))
         })
         addView(section("关于"))
+        addView(action("检查更新") { host.checkForUpdates() })
         addView(TextView(context).apply {
             text = "FinancialBeancount\n作者 GitHub：https://github.com/ssh555\n项目仓库：https://github.com/ssh555/FinancialBeancount\n原始出处：https://github.com/CacinieP/FinancialBeancount\n许可证：MIT"
             setPadding(0, dp(8), 0, dp(8))

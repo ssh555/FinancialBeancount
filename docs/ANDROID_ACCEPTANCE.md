@@ -119,7 +119,10 @@ that all three operations leave audit events.
 
 ## Pass criteria
 
-- The workflow needs no network service, network permission or broad all-files permission.
+- Ledger, import, statistics and export remain usable offline and need no broad all-files permission;
+  network and package-install permissions are used only for a user-triggered update.
+- **Check for updates** ignores drafts and prereleases, accepts only a versioned APK with its SHA-256
+  file, and never launches the installer after verification failure.
 - One complete archive restores successfully; a damaged archive fails without harming the current
   ledger.
 - Core counts in the desktop acceptance report agree with device spot checks, and the added test

@@ -15,8 +15,10 @@ copies or shares an exported file.
   presses **Check for updates**, and sends the application version and ordinary HTTP request metadata
   to the configured HTTPS Release endpoint. It never reads or transmits the ledger database,
   statement files, transaction fields, account identifiers or backups.
-- Disabling `FINANCIAL_BEANCOUNT_UPDATE_API` keeps the application completely offline. A custom
-  endpoint must use HTTPS.
+- Desktop can disable or configure its HTTPS endpoint through `FINANCIAL_BEANCOUNT_UPDATE_API`.
+  Android accesses only the `ssh555/FinancialBeancount` GitHub Releases API and the selected
+  Release's HTTPS APK/checksum URLs. Its network and package-install permissions are used only for a
+  user-triggered update.
 
 ## Browser and cache behavior
 

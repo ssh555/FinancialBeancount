@@ -3,14 +3,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_android_shell_reuses_core_without_network_permission() -> None:
+def test_android_shell_reuses_core_and_limits_network_to_updates() -> None:
     manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
     activity = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/MainActivity.kt"
     ).read_text(encoding="utf-8")
     build = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
 
-    assert "android.permission.INTERNET" not in manifest
+    assert "android.permission.INTERNET" in manifest
+    assert "android.permission.REQUEST_INSTALL_PACKAGES" in manifest
+    assert 'android:authorities="${applicationId}.updates"' in manifest
     assert 'android:usesCleartextTraffic="false"' in manifest
     assert "WebView" not in activity
     assert 'srcDir(layout.buildDirectory.dir("generated/python"))' in build
@@ -25,6 +27,17 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert "contentResolver.openOutputStream" in activity
     assert "bridge.callAttr(" in activity and '"restore_archive"' in activity
     assert "androidx.documentfile:documentfile" in build
+
+    updater = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/AndroidUpdateManager.kt"
+    ).read_text(encoding="utf-8")
+    assert "api.github.com/repos/ssh555/FinancialBeancount/releases/latest" in updater
+    assert 'optBoolean("draft")' in updater and 'optBoolean("prerelease")' in updater
+    assert "FinancialBeancount-android-$version.apk" in updater
+    assert 'MessageDigest.getInstance("SHA-256")' in updater
+    assert "MAX_APK_BYTES" in updater
+    assert "FileProvider.getUriForFile" in updater
+    assert "canRequestPackageInstalls" in updater
 
 
 def test_android_launches_native_mobile_navigation() -> None:

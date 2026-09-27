@@ -1,7 +1,9 @@
 package io.github.ssh555.financialbeancount
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Base64
 import androidx.activity.ComponentActivity
@@ -11,6 +13,7 @@ import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import org.json.JSONObject
+import java.io.File
 import kotlin.concurrent.thread
 
 private const val MAX_IMPORT_BYTES = 50L * 1024 * 1024
@@ -25,6 +28,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
     private lateinit var nativeClient: NativeLedgerClient
     private var nativeDataView: NativeDataView? = null
     @Volatile private var pendingExport: PendingExport? = null
+    @Volatile private var pendingUpdateApk: File? = null
 
     private val singleFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         importSelectedUris(listOfNotNull(uri))
@@ -86,6 +90,55 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
             } catch (error: Exception) {
                 nativeDataView?.post { nativeDataView?.showProgress(error.message ?: "完整归档导出失败") }
             }
+        }
+    }
+
+    override fun checkForUpdates() {
+        nativeDataView?.showProgress("正在检查 GitHub Release…")
+        thread(name = "android-update-check") {
+            try {
+                val manager = AndroidUpdateManager(this)
+                val update = manager.check()
+                runOnUiThread {
+                    if (update == null) nativeDataView?.showProgress("当前已是最新版本（${BuildConfig.VERSION_NAME}）")
+                    else AlertDialog.Builder(this)
+                        .setTitle("发现新版本 ${update.version}")
+                        .setMessage("下载大小：${update.apkSize / 1024 / 1024.0} MiB\n\n${update.notes.take(1200)}")
+                        .setPositiveButton("下载并更新") { _, _ -> downloadAndInstall(update) }
+                        .setNegativeButton("稍后", null)
+                        .show()
+                }
+            } catch (error: Exception) {
+                nativeDataView?.post { nativeDataView?.showProgress(error.message ?: "检查更新失败") }
+            }
+        }
+    }
+
+    private fun downloadAndInstall(update: AndroidUpdateInfo) {
+        nativeDataView?.showProgress("正在下载并校验 ${update.apkName}…")
+        thread(name = "android-update-download") {
+            try {
+                val manager = AndroidUpdateManager(this)
+                val apk = manager.download(update)
+                runOnUiThread {
+                    if (manager.install(apk)) nativeDataView?.showProgress("校验通过，已交给系统安装器")
+                    else {
+                        pendingUpdateApk = apk
+                        nativeDataView?.showProgress("请允许此来源安装应用，返回后将继续安装")
+                    }
+                }
+            } catch (error: Exception) {
+                nativeDataView?.post { nativeDataView?.showProgress(error.message ?: "更新下载失败") }
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val apk = pendingUpdateApk ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()) {
+            pendingUpdateApk = null
+            if (AndroidUpdateManager(this).install(apk)) nativeDataView?.showProgress("权限已允许，已交给系统安装器")
         }
     }
 

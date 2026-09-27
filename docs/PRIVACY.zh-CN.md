@@ -8,8 +8,8 @@ FinancialBeancount 是本地优先账本。除非用户主动复制或分享导�
 
 - 桌面账本服务随机绑定 `127.0.0.1` 端口。除非操作者明确配置 API 令牌，否则拒绝绑定非回环地址。
 - 应用不包含遥测、分析、崩溃上报或广告客户端。
-- 应用包中唯一的出站客户端是更新器。只有用户点击“检查更新”后才会请求配置的 HTTPS Release 端点；请求包含应用版本和普通 HTTP 元数据，不读取或传输账本数据库、账单文件、交易字段、账户标识或备份。
-- 将 `FINANCIAL_BEANCOUNT_UPDATE_API` 设为禁用值后，应用保持完全离线；自定义更新端点必须使用 HTTPS。
+- 应用包中唯一的出站客户端是更新器。只有用户点击“检查更新”后才会请求 HTTPS Release 端点；请求包含应用版本和普通 HTTP 元数据，不读取或传输账本数据库、账单文件、交易字段、账户标识或备份。
+- 桌面端可通过 `FINANCIAL_BEANCOUNT_UPDATE_API` 禁用或配置 HTTPS 更新端点；Android 仅访问 `ssh555/FinancialBeancount` 的 GitHub Release API 与所选 Release 的 HTTPS APK/校验文件下载地址。Android 的网络和安装包权限只用于用户主动触发的更新。
 
 ## 浏览器与缓存
 

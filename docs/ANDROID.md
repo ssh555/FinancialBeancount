@@ -23,6 +23,10 @@ archive. It must not introduce a mobile-only database or duplicate business logi
 - Export through the system create-document UI. Do not request broad all-files access.
 - Formal updates retain the application ID, increment versionCode, and use the same Android signing
   identity or a valid key-rotation proof, avoiding uninstall/reinstall.
+- **Check for updates** contacts the official GitHub Release only after a user action. It accepts a
+  stable release with an exact versioned APK and SHA-256 file, then hands the verified APK to the
+  Android package installer. The first use may require enabling installs from this source; later
+  higher-version APKs with the same signature preserve the ledger during in-place installation.
 
 ## Current increment
 
@@ -31,8 +35,9 @@ WebView and asset allowlist, with tests for health, unified-schema initializatio
 creation/listing and path rejection. The Android debug app now uses the system picker for one file,
 multiple files or a folder and reuses the web batch-import queue; unsupported, oversized or unreadable
 files are reported by name. Transaction CSV/JSON and the complete portable archive can also be saved
-through the system create-document UI without broad storage permission. A manual GitHub Actions job
-produces a debug APK only; it neither publishes nor signs a formal build.
+through the system create-document UI without broad storage permission. The in-app updater can check,
+download, verify and hand an APK to the system installer; formal in-place upgrade acceptance still
+requires a Release APK signed with the fixed publisher identity.
 
 No publishable Android APK/AAB exists yet. The current debug APK must not be represented as a formal
 release-ready artifact.
