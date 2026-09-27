@@ -70,23 +70,21 @@ def test_android_native_ui_reuses_the_web_default_palette() -> None:
         assert color in web_ui
 
 
-def test_android_launches_native_mobile_navigation() -> None:
+def test_android_launches_compose_mobile_navigation() -> None:
     activity = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/MainActivity.kt"
     ).read_text(encoding="utf-8")
     shell = (
-        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeAppView.kt"
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeApp.kt"
     ).read_text(encoding="utf-8")
-    assert "NativeAppView(this, nativeClient, this)" in activity
-    assert "setContentView(application)" in activity
+    assert "setContent { FinancialBeancountTheme" in activity
+    assert "FinancialBeancountApp(nativeClient, dataView)" in activity
     for page in ("概览", "交易", "审核", "数据"):
         assert f'"{page}"' in shell
     assert "ScrollView" in shell
-    assert "BottomNavigationView" in shell
-    assert "LABEL_VISIBILITY_LABELED" in shell
-    assert "ic_overview" in shell and "ic_transactions" in shell
-    assert "pageFactories" in shell
-    assert "getOrPut(label)" in shell
+    assert "NavigationBar" in shell
+    assert "NavigationBarItem" in shell
+    assert "LedgerDestination.entries" in shell
 
     build = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
     assert "com.google.android.material:material" in build
@@ -157,6 +155,20 @@ def test_android_compose_uses_bom_and_semantic_theme_tokens() -> None:
     assert "compose = true" in build
     for token in ("Ink", "Muted", "Paper", "Card", "Line", "Primary", "Danger"):
         assert f"val {token}" in theme
+
+
+def test_android_compose_shell_uses_material_navigation_and_real_overview() -> None:
+    activity = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/MainActivity.kt"
+    ).read_text(encoding="utf-8")
+    app = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeApp.kt"
+    ).read_text(encoding="utf-8")
+    assert "setContent { FinancialBeancountTheme" in activity
+    assert "Scaffold(" in app and "NavigationBar(" in app
+    assert "LazyColumn(" in app and "FilterChip(" in app
+    assert '"/api/v1/statistics/summary?$query"' in app
+    assert '"/api/v1/statistics/timeline?period=$grouping&$query"' in app
 
 
 def test_native_android_overview_uses_async_core_client() -> None:

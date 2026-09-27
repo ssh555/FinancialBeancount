@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Base64
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.documentfile.provider.DocumentFile
 import com.chaquo.python.PyObject
@@ -160,9 +161,9 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
         if (!Python.isStarted()) Python.start(AndroidPlatform(this))
         bridge = Python.getInstance().getModule("beancount_dedup.android_bridge")
         nativeClient = NativeLedgerClient(this)
-        val application = NativeAppView(this, nativeClient, this)
-        nativeDataView = application.dataView
-        setContentView(application)
+        val dataView = NativeDataView(this, nativeClient, this)
+        nativeDataView = dataView
+        setContent { FinancialBeancountTheme { FinancialBeancountApp(nativeClient, dataView) } }
     }
 
     override fun onDestroy() {
