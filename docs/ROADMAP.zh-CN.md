@@ -25,10 +25,11 @@
 - 跨平台原生签名证据契约：固定发布者或指纹，并绑定准确安装包摘要。
 - Windows MSI 的按用户安装、原位升级、卸载保留账本验收，以及 Authenticode、RFC 3161 时间戳和严格发布门禁。
 - macOS 只读 DMG、拖放安装、替换升级数据保留，以及 Developer ID、强化运行时、公证、装订、Gatekeeper 和严格发布门禁代码。
+- Android 无 localhost 的原生 JSON 桥接、应用私有统一 SQLite 初始化及静态资源白名单。
 
 ## 后续发布批次
 
 - 配置实际 Windows 和 Apple 发布者凭据，并在干净 Runner 上完成正向验证。
 - 使用实际发布者 OpenPGP 密钥完成 Linux AppImage 签名正向验证；AppImage 构建、替换升级、卸载数据保留和严格门禁代码已完成。
 - 每次正式发布后，将该版本加入持续升级兼容矩阵。
-- 核心离线运行条件满足后再进入 Android APK/应用商店交付。
+- 建立 Kotlin/Gradle Android 工程、Storage Access Framework 批量导入与 WebView 安全边界，再接入 APK/AAB 签名和升级验收。

@@ -9,7 +9,7 @@ auditable stages. It does not imply that a release should be created early.
 
 - Local-first responsive web application bundled with the ledger engine.
 - Desktop controller and reproducible Windows, macOS, and Linux application builds.
-- Android packaging only after the ledger engine can run fully offline inside the application.
+- Android packaging through a socket-free native bridge to the same offline ledger engine.
 
 ## Release gate: updates without uninstalling
 
@@ -98,6 +98,9 @@ review, and end-to-end tests are complete.
   signs the hardened-runtime application and DMG with secure timestamps, requires an accepted Apple
   notarization result, staples and validates the ticket, runs Gatekeeper assessment, records native
   evidence and enters the strict macOS publication gate without an unsigned fallback.
+- Android now has a socket-free native JSON bridge, app-private unified SQLite initialization and a
+  bundled-web-asset allowlist. The next batch adds the Kotlin/Gradle shell, Storage Access Framework
+  batch import, secure WebView boundary, APK/AAB signing and upgrade acceptance.
 
 Publisher credential validation and installer upgrades from every published version remain future
 release batches. Linux AppImage construction, replacement-upgrade data preservation, detached GPG

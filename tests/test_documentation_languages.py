@@ -5,7 +5,7 @@ DOCS = ROOT / "docs"
 
 
 def test_maintainer_documents_have_reciprocal_language_links() -> None:
-    for stem in ("PRIVACY", "ROADMAP", "RELEASE"):
+    for stem in ("PRIVACY", "ROADMAP", "RELEASE", "ANDROID"):
         english = (DOCS / f"{stem}.md").read_text(encoding="utf-8")
         chinese = (DOCS / f"{stem}.zh-CN.md").read_text(encoding="utf-8")
         assert f"[{stem}.zh-CN.md]" not in english
@@ -16,7 +16,7 @@ def test_maintainer_documents_have_reciprocal_language_links() -> None:
 def test_documentation_indexes_link_every_language_pair() -> None:
     chinese_index = (DOCS / "README.md").read_text(encoding="utf-8")
     english_index = (DOCS / "README.en.md").read_text(encoding="utf-8")
-    for stem in ("PRIVACY", "ROADMAP", "RELEASE"):
+    for stem in ("PRIVACY", "ROADMAP", "RELEASE", "ANDROID"):
         for index in (chinese_index, english_index):
             assert f"({stem}.md)" in index
             assert f"({stem}.zh-CN.md)" in index

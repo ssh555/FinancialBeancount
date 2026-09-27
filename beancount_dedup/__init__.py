@@ -10,6 +10,7 @@ __version__ = "0.2.0"
 
 _EXPORTS = {
     "API_VERSION": ("mobile_api", "API_VERSION"),
+    "android_dispatch": ("android_bridge", "dispatch"),
     "AccountType": ("account_classifier", "AccountType"),
     "ApiResponse": ("mobile_api", "ApiResponse"),
     "AppConfig": ("config", "AppConfig"),
