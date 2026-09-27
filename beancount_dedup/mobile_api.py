@@ -133,6 +133,15 @@ class MobileLedgerApi:
                     _optional_date(query, "date_from"), _optional_date(query, "date_to")
                 )
                 return self._ok(report.to_dict())
+            if method == "GET" and path == "/api/v1/statistics/timeline":
+                period = query.get("period", ["month"])[0]
+                return self._ok(
+                    self.statistics.timeline(
+                        period,
+                        _optional_date(query, "date_from"),
+                        _optional_date(query, "date_to"),
+                    )
+                )
             if method == "GET" and path == "/api/v1/review/candidates":
                 return self._list_candidates(query)
             if path.startswith("/api/v1/review/candidates/"):

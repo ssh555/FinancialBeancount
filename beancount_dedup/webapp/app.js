@@ -8,6 +8,7 @@ const state = {
   counts: { imports: 0, matches: 0, refunds: 0, classifications: 0 },
   importFormats: [],
   importQueue: [],
+  timelinePeriod: "month",
 };
 
 const $ = selector => document.querySelector(selector);
@@ -113,8 +114,13 @@ function useCustomStatisticsPeriod() {
 async function loadOverview() {
   $("#summary-cards").innerHTML = '<div class="summary-card skeleton"></div>'.repeat(4);
   $("#category-list").innerHTML = '<div class="skeleton"></div>';
+  $("#timeline-list").innerHTML = '<div class="skeleton"></div>';
   try {
-    const { data } = await request(`/api/v1/statistics/summary?${dateQuery()}`);
+    const query = dateQuery();
+    const [{ data }, timeline] = await Promise.all([
+      request(`/api/v1/statistics/summary?${query}`),
+      request(`/api/v1/statistics/timeline?period=${state.timelinePeriod}&${query}`),
+    ]);
     const cards = [
       ["净支出", money(data.net_expense), `${data.expense_count} 笔消费`, "featured"],
       ["总支出", money(data.gross_expense), "退款前", ""],
@@ -129,8 +135,12 @@ async function loadOverview() {
     $("#category-list").innerHTML = data.categories.length ? data.categories.map(item => `
       <div class="category-row"><span>${escapeHtml(item.category)}</span><strong>${money(item.net_expense)}</strong>
       <div class="category-bar"><span style="width:${Math.max(0, Number(item.net_expense)) / maximum * 100}%"></span></div></div>`).join("") : empty("当前范围没有可统计交易");
+    $("#timeline-list").innerHTML = timeline.data.length ? timeline.data.map(item => {
+      const label = item.date_from === item.date_to ? item.date_from : `${item.date_from} ～ ${item.date_to}`;
+      return `<div class="timeline-row"><strong>${escapeHtml(label)}</strong><span>收入 ${money(item.ordinary_income)}</span><span>支出 ${money(item.gross_expense)}</span><span>净支出 ${money(item.net_expense)}</span></div>`;
+    }).join("") : empty("当前范围没有周期统计");
     if (data.pending_review_excluded_count) toast(`${data.pending_review_excluded_count} 笔待审核交易未计入统计`);
-  } catch (error) { renderError($("#summary-cards"), error); renderError($("#category-list"), error); }
+  } catch (error) { renderError($("#summary-cards"), error); renderError($("#category-list"), error); renderError($("#timeline-list"), error); }
   refreshCounts();
 }
 
@@ -535,6 +545,11 @@ $("#apply-dates").addEventListener("click", loadOverview);
 $$('[data-statistics-period]').forEach(button => button.addEventListener("click", () => setStatisticsPeriod(button.dataset.statisticsPeriod)));
 $("#date-from").addEventListener("change", useCustomStatisticsPeriod);
 $("#date-to").addEventListener("change", useCustomStatisticsPeriod);
+$$('[data-timeline-period]').forEach(button => button.addEventListener("click", () => {
+  state.timelinePeriod = button.dataset.timelinePeriod;
+  $$('[data-timeline-period]').forEach(node => node.classList.toggle("active", node === button));
+  loadOverview();
+}));
 $("#connection-button").addEventListener("click", () => showView("settings"));
 $("#dialog-close").addEventListener("click", () => $("#detail-dialog").close());
 $("#settings-form").addEventListener("submit", async event => {

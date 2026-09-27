@@ -530,3 +530,12 @@ def test_statistics_summary_api_uses_date_filters(store):
     assert response.body["data"]["gross_expense"] == "80"
     assert response.body["data"]["net_expense"] == "80"
     assert response.body["data"]["categories"][0]["category"] == "餐饮"
+
+    timeline = MobileLedgerApi(store).dispatch(
+        "GET", "/api/v1/statistics/timeline?period=month&date_from=2026-03-01&date_to=2026-04-30"
+    )
+    assert timeline.status == 200
+    assert [item["date_from"] for item in timeline.body["data"]] == [
+        "2026-04-01",
+        "2026-03-01",
+    ]

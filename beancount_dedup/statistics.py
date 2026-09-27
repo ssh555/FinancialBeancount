@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from datetime import date
+from typing import Any
 
 from .ledger_store import LedgerStore
 from .models import TransactionType
@@ -170,6 +168,120 @@ class StatisticsService:
             categories=categories,
         )
 
+    def timeline(
+        self, period: str, date_from: date | None = None, date_to: date | None = None
+    ) -> list[dict[str, Any]]:
+        """Aggregate reportable canonical transactions into calendar periods."""
+        if period not in {"day", "week", "month", "year"}:
+            raise ValueError("period must be day, week, month, or year")
+        if date_from and date_to and date_from > date_to:
+            raise ValueError("date_from must not be after date_to")
+        transactions = [
+            item
+            for item in self.store.list_canonical()
+            if _in_range(item.booking_date, date_from, date_to)
+        ]
+        pending_ids = {
+            row["canonical_id"]
+            for row in self.store.connection.execute(
+                "SELECT canonical_id FROM classification_candidates WHERE status = 'pending'"
+            ).fetchall()
+        }
+        pending_ids.update(
+            row["from_canonical_id"]
+            for row in self.store.connection.execute(
+                "SELECT from_canonical_id FROM transaction_relationships "
+                "WHERE relationship_type = 'refund' AND status = 'pending'"
+            ).fetchall()
+        )
+        buckets: dict[date, dict[str, Any]] = {}
+        for item in transactions:
+            start = _period_start(item.booking_date, period)
+            bucket = buckets.setdefault(start, _empty_period(start, period))
+            if item.canonical_id in pending_ids:
+                bucket["pending_review_excluded_count"] += 1
+            elif item.tx_type == TransactionType.EXPENSE:
+                bucket["gross_expense"] += abs(item.amount)
+                bucket["expense_count"] += 1
+            elif item.tx_type == TransactionType.INCOME:
+                bucket["ordinary_income"] += item.amount
+                bucket["income_count"] += 1
+
+        refund_rows = self.store.connection.execute(
+            """
+            SELECT relationships.amount, refund.booking_date
+            FROM transaction_relationships AS relationships
+            JOIN canonical_transactions AS refund
+              ON refund.canonical_id = relationships.from_canonical_id
+            WHERE relationships.relationship_type = 'refund'
+              AND relationships.status = 'confirmed'
+              AND (? IS NULL OR refund.booking_date >= ?)
+              AND (? IS NULL OR refund.booking_date <= ?)
+            """,
+            (
+                date_from.isoformat() if date_from else None,
+                date_from.isoformat() if date_from else None,
+                date_to.isoformat() if date_to else None,
+                date_to.isoformat() if date_to else None,
+            ),
+        ).fetchall()
+        for row in refund_rows:
+            start = _period_start(date.fromisoformat(row["booking_date"]), period)
+            bucket = buckets.setdefault(start, _empty_period(start, period))
+            bucket["refunds"] += Decimal(row["amount"])
+            bucket["refund_count"] += 1
+
+        result = []
+        for start in sorted(buckets, reverse=True):
+            bucket = buckets[start]
+            bucket["net_expense"] = bucket["gross_expense"] - bucket["refunds"]
+            bucket["net_cash_flow"] = (
+                bucket["ordinary_income"] + bucket["refunds"] - bucket["gross_expense"]
+            )
+            result.append(
+                {
+                    key: str(value) if isinstance(value, Decimal) else value
+                    for key, value in bucket.items()
+                }
+            )
+        return result
+
 
 def _in_range(value: date, date_from: date | None, date_to: date | None) -> bool:
     return (date_from is None or value >= date_from) and (date_to is None or value <= date_to)
+
+
+def _period_start(value: date, period: str) -> date:
+    if period == "week":
+        return value - timedelta(days=value.weekday())
+    if period == "month":
+        return value.replace(day=1)
+    if period == "year":
+        return value.replace(month=1, day=1)
+    return value
+
+
+def _empty_period(start: date, period: str) -> dict[str, Any]:
+    if period == "week":
+        end = start + timedelta(days=6)
+    elif period == "month":
+        next_start = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        end = next_start - timedelta(days=1)
+    elif period == "year":
+        end = start.replace(month=12, day=31)
+    else:
+        end = start
+    return {
+        "period": period,
+        "date_from": start.isoformat(),
+        "date_to": end.isoformat(),
+        "gross_expense": Decimal("0"),
+        "refunds": Decimal("0"),
+        "net_expense": Decimal("0"),
+        "ordinary_income": Decimal("0"),
+        "net_cash_flow": Decimal("0"),
+        "expense_count": 0,
+        "income_count": 0,
+        "refund_count": 0,
+        "pending_review_excluded_count": 0,
+    }

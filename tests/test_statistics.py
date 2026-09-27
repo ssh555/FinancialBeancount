@@ -108,3 +108,32 @@ def test_statistics_date_filter_applies_to_cash_flow_and_refund_date(store):
 def test_reversed_statistics_range_is_rejected(store):
     with pytest.raises(ValueError, match="date_from"):
         StatisticsService(store).summarize(date(2026, 4, 1), date(2026, 3, 1))
+
+
+def test_timeline_groups_income_and_expense_by_calendar_period(store):
+    store.add_canonical(transaction(2, "-100", "三月消费", TransactionType.EXPENSE))
+    store.add_canonical(transaction(3, "500", "三月收入", TransactionType.INCOME))
+    store.add_canonical(
+        CanonicalTransaction(
+            transaction_time=None,
+            booking_date=date(2026, 4, 1),
+            amount="-20",
+            direction="expense",
+            merchant="四月消费",
+            tx_type=TransactionType.EXPENSE,
+        )
+    )
+
+    monthly = StatisticsService(store).timeline("month")
+    weekly = StatisticsService(store).timeline("week", date(2026, 3, 1), date(2026, 3, 31))
+
+    assert [item["date_from"] for item in monthly] == ["2026-04-01", "2026-03-01"]
+    assert monthly[1]["gross_expense"] == "100"
+    assert monthly[1]["ordinary_income"] == "500"
+    assert monthly[1]["net_cash_flow"] == "400"
+    assert weekly[0]["date_from"] == "2026-03-02"
+
+
+def test_timeline_rejects_unknown_period(store):
+    with pytest.raises(ValueError, match="period"):
+        StatisticsService(store).timeline("quarter")

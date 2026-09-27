@@ -41,6 +41,16 @@
       </div>
       <div id="summary-cards" class="summary-grid" aria-live="polite"></div>
       <section class="card">
+        <div class="card-heading"><h3>周期收支</h3></div>
+        <div class="timeline-periods" aria-label="统计分组周期">
+          <button data-timeline-period="day" type="button">日</button>
+          <button data-timeline-period="week" type="button">周</button>
+          <button class="active" data-timeline-period="month" type="button">月</button>
+          <button data-timeline-period="year" type="button">年</button>
+        </div>
+        <div id="timeline-list" class="timeline-list" aria-live="polite"></div>
+      </section>
+      <section class="card">
         <div class="card-heading"><h3>支出分类</h3><span id="category-total" class="muted"></span></div>
         <div id="category-list" class="category-list"></div>
       </section>
