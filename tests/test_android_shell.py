@@ -145,6 +145,20 @@ def test_android_release_version_and_signing_are_build_parameters() -> None:
     assert "unsigned Android release builds are forbidden" in build
 
 
+def test_android_compose_uses_bom_and_semantic_theme_tokens() -> None:
+    build = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+    root_build = (ROOT / "android/build.gradle.kts").read_text(encoding="utf-8")
+    theme = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeTheme.kt"
+    ).read_text(encoding="utf-8")
+    assert 'id("org.jetbrains.kotlin.plugin.compose")' in root_build
+    assert 'platform("androidx.compose:compose-bom:' in build
+    assert 'implementation("androidx.compose.material3:material3")' in build
+    assert "compose = true" in build
+    for token in ("Ink", "Muted", "Paper", "Card", "Line", "Primary", "Danger"):
+        assert f"val {token}" in theme
+
+
 def test_native_android_overview_uses_async_core_client() -> None:
     client = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeLedgerClient.kt"
