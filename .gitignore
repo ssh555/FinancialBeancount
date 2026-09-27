@@ -3,6 +3,7 @@
 # 用户数据文件夹（包含真实账单，不要提交）
 input/
 output/
+.private/
 *.sqlite3
 *.sqlite3-*
 *.financial-beancount.zip
