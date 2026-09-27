@@ -41,6 +41,7 @@ class StatisticsReport:
     income_count: int
     refund_count: int
     excluded_non_consumption_count: int
+    unclassified_excluded_count: int
     pending_review_excluded_count: int
     categories: tuple[CategoryStatistics, ...]
 
@@ -65,6 +66,7 @@ class StatisticsReport:
             "income_count": self.income_count,
             "refund_count": self.refund_count,
             "excluded_non_consumption_count": self.excluded_non_consumption_count,
+            "unclassified_excluded_count": self.unclassified_excluded_count,
             "pending_review_excluded_count": self.pending_review_excluded_count,
             "categories": [item.to_dict() for item in self.categories],
         }
@@ -111,6 +113,7 @@ class StatisticsService:
             TransactionType.PREAUTHORIZATION,
         }
         excluded = [item for item in reportable if item.tx_type in excluded_types]
+        unclassified = [item for item in reportable if item.tx_type == TransactionType.UNKNOWN]
 
         refund_rows = self.store.connection.execute(
             """
@@ -164,6 +167,7 @@ class StatisticsService:
             income_count=len(incomes),
             refund_count=len(refund_rows),
             excluded_non_consumption_count=len(excluded),
+            unclassified_excluded_count=len(unclassified),
             pending_review_excluded_count=len(pending),
             categories=categories,
         )
@@ -206,6 +210,8 @@ class StatisticsService:
             elif item.tx_type == TransactionType.INCOME:
                 bucket["ordinary_income"] += item.amount
                 bucket["income_count"] += 1
+            elif item.tx_type == TransactionType.UNKNOWN:
+                bucket["unclassified_excluded_count"] += 1
 
         refund_rows = self.store.connection.execute(
             """
@@ -284,4 +290,5 @@ def _empty_period(start: date, period: str) -> dict[str, Any]:
         "income_count": 0,
         "refund_count": 0,
         "pending_review_excluded_count": 0,
+        "unclassified_excluded_count": 0,
     }

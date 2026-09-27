@@ -53,7 +53,9 @@ class NativeOverviewView(
         client.request("GET", "/api/v1/statistics/summary?$query") { result ->
             result.onSuccess { response ->
                 val data = response.getJSONObject("body").getJSONObject("data")
-                summary.text = "结余 ${money(data.getString("net_cash_flow"))}   支出 ${money(data.getString("gross_expense"))}\n收入 ${money(data.getString("ordinary_income"))}   退款 ${money(data.getString("refunds"))}"
+                val excluded = data.optInt("pending_review_excluded_count") + data.optInt("unclassified_excluded_count")
+                val note = if (excluded > 0) "\n$excluded 笔待审核或未分类交易未计入收支" else ""
+                summary.text = "结余 ${money(data.getString("net_cash_flow"))}   支出 ${money(data.getString("gross_expense"))}\n收入 ${money(data.getString("ordinary_income"))}   退款 ${money(data.getString("refunds"))}$note"
             }.onFailure { summary.text = it.message ?: "统计加载失败" }
         }
         client.request("GET", "/api/v1/statistics/timeline?period=$grouping&$query") { result ->

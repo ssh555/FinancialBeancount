@@ -78,6 +78,13 @@ def test_pending_refund_and_transfer_candidates_are_excluded_until_review(store)
     assert report.pending_review_excluded_count == 2
 
 
+def test_unknown_transactions_are_explicitly_reported_as_excluded(store):
+    store.add_canonical(transaction(8, "20", "待识别退款", TransactionType.UNKNOWN))
+    report = StatisticsService(store).summarize()
+    assert report.unclassified_excluded_count == 1
+    assert report.to_dict()["unclassified_excluded_count"] == 1
+
+
 def test_statistics_date_filter_applies_to_cash_flow_and_refund_date(store):
     old_expense = transaction(1, "-100", "星巴克", TransactionType.EXPENSE, "餐饮")
     refund = transaction(5, "100", "星巴克退款", TransactionType.INCOME)

@@ -160,7 +160,8 @@ async function loadOverview() {
       const label = item.date_from === item.date_to ? item.date_from : `${item.date_from} ～ ${item.date_to}`;
       return `<div class="timeline-row"><strong>${escapeHtml(label)}</strong><span>收入 ${money(item.ordinary_income)}</span><span>支出 ${money(item.gross_expense)}</span><span>结余 ${money(item.net_cash_flow)}</span></div>`;
     }).join("") : empty("当前范围没有周期统计");
-    if (data.pending_review_excluded_count) toast(`${data.pending_review_excluded_count} 笔待审核交易未计入统计`);
+    const excluded = data.pending_review_excluded_count + data.unclassified_excluded_count;
+    if (excluded) toast(`${excluded} 笔待审核或未分类交易未计入收支`);
   } catch (error) { renderError($("#summary-cards"), error); renderError($("#category-list"), error); renderError($("#timeline-list"), error); }
   refreshCounts();
 }
