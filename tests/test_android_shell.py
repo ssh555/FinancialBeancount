@@ -16,7 +16,7 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert "allowContentAccess = false" in activity
     assert "MIXED_CONTENT_NEVER_ALLOW" in activity
     assert "appassets.androidplatform.net" in activity
-    assert 'python.srcDir(layout.buildDirectory.dir("generated/python"))' in build
+    assert 'srcDir(layout.buildDirectory.dir("generated/python"))' in build
     assert 'from(rootProject.projectDir.parentFile.resolve("beancount_dedup"))' in build
 
 

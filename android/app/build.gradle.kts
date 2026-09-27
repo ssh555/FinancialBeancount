@@ -23,14 +23,14 @@ android {
         buildConfig = true
     }
 
-    sourceSets.getByName("main") {
-        python.srcDir(layout.buildDirectory.dir("generated/python"))
-    }
 }
 
 chaquopy {
     defaultConfig {
         version = "3.12"
+    }
+    sourceSets.getByName("main") {
+        srcDir(layout.buildDirectory.dir("generated/python"))
     }
 }
 
