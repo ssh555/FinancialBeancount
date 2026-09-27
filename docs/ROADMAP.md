@@ -121,6 +121,10 @@ update, or acceptance work:
   each with its corresponding icon and the display name `希芙の账单`.
 - Skins may change colors, backgrounds, icons, and the display name only. They must not alter the
   unified ledger schema, business rules, or user-data directory.
+- Icons and display names must also cover package-level metadata, not only in-app presentation:
+  Android launcher identity, desktop executables, installers, shortcuts, and platform package
+  metadata. The design must distinguish runtime-switchable elements from package variants while
+  preserving one application identity and in-place upgrade compatibility.
 - The publisher must verify permission for character artwork, names, and derivative icons before a
   public Release; the repository must not bundle official assets with unclear provenance or rights.
 

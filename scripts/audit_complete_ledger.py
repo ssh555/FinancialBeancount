@@ -84,6 +84,27 @@ def audit_database(database: Path) -> dict[str, Any]:
                 ],
                 "policy": "即使高置信度也只提高人工审核优先级，不自动归并。",
             },
+            "refund_relationships": {
+                "confirmed_count": _count_where(
+                    store, "transaction_relationships", "status = 'confirmed'"
+                ),
+                "pending_count": _count_where(
+                    store, "transaction_relationships", "status = 'pending'"
+                ),
+                "ambiguous_pending_count": _count_where(
+                    store,
+                    "transaction_relationships",
+                    "status = 'pending' AND is_ambiguous = 1",
+                ),
+            },
+            "non_consumption_classifications": {
+                "confirmed_count": _count_where(
+                    store, "classification_candidates", "status = 'confirmed'"
+                ),
+                "pending_count": _count_where(
+                    store, "classification_candidates", "status = 'pending'"
+                ),
+            },
             "bank_balance_collisions": {
                 "group_count": len(collisions),
                 "high_priority_count": sum(item["priority"] == "high" for item in collisions),
@@ -194,6 +215,12 @@ def _investment_scope(description: str, counterparty: str) -> str:
 
 def _count(store: LedgerStore, table: str) -> int:
     return int(store.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+
+
+def _count_where(store: LedgerStore, table: str, where: str) -> int:
+    return int(
+        store.connection.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}").fetchone()[0]
+    )
 
 
 def main() -> int:

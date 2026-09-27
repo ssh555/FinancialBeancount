@@ -118,6 +118,17 @@ class TransactionClassificationService:
             raise KeyError(candidate_id)
         return self._from_row(row)
 
+    def confirm_high_confidence(self, actor: str) -> int:
+        """Confirm explicit keyword classifications; leave lower-confidence items for review."""
+
+        confirmed = 0
+        for candidate in self.list_candidates("pending"):
+            if candidate.confidence < Decimal("0.88") or not candidate.evidence:
+                continue
+            self.confirm(candidate.candidate_id, actor)
+            confirmed += 1
+        return confirmed
+
     def confirm(self, candidate_id: str, actor: str) -> ClassificationEvent:
         candidate = self.get_candidate(candidate_id)
         if candidate.status != "pending":

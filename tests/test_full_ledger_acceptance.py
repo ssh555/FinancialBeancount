@@ -40,5 +40,9 @@ def test_complete_acceptance_exports_one_restorable_mobile_archive(tmp_path: Pat
     assert report["table_counts"]["raw_transactions"] == 1
     assert report["table_counts"]["canonical_transactions"] == 1
     assert report["safe_confirmed_review_count"] == 1
+    assert report["exact_payment_match_count"] == 0
+    assert report["safe_classification_count"] == 0
+    assert report["safe_refund_count"] == 0
+    assert report["refund_warning_count"] == 0
     assert report["pending_match_candidate_count"] == 0
     assert Path(report["portable_archive"]).is_file()

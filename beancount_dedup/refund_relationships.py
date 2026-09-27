@@ -19,6 +19,7 @@ from .models import TransactionType
 
 REFUND_MARKERS = ("退款", "退回", "退还", "refund")
 REFUND_MATCHER_VERSION = "canonical-refund-v1"
+WARNING_ACKNOWLEDGED = "warning_acknowledged"
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,177 @@ class RefundRelationshipService:
 
     def get_candidate(self, relationship_id: str) -> RefundCandidate:
         return self._get(relationship_id)
+
+    def confirm_preferred_refunds(self, actor: str) -> dict[str, int]:
+        """Assign refunds deterministically and retain ambiguous/partial assignments as warnings."""
+
+        groups: dict[str, list[RefundCandidate]] = {}
+        for candidate in self.list_candidates("pending"):
+            groups.setdefault(candidate.refund_canonical_id, []).append(candidate)
+
+        ordered_groups = sorted(
+            groups.values(),
+            key=lambda items: self._transaction_order(items[0].refund_canonical_id),
+        )
+        confirmed = 0
+        warnings = 0
+        for candidates in ordered_groups:
+            full = [item for item in candidates if "amount_full" in item.evidence]
+            ranked = sorted(full or candidates, key=self._refund_rank)
+            selected = next((item for item in ranked if self._has_refund_capacity(item)), None)
+            if selected is None:
+                continue
+            self.confirm(selected.relationship_id, actor)
+            confirmed += 1
+            if selected.is_ambiguous or "amount_partial" in selected.evidence:
+                warnings += 1
+        return {"confirmed": confirmed, "warnings": warnings}
+
+    def acknowledge_warning(self, relationship_id: str, actor: str) -> RefundReviewEvent:
+        """Accept an automatic ambiguous/partial assignment without changing its accounting."""
+
+        candidate = self._get(relationship_id)
+        if candidate.status != "confirmed" or not self._is_warning(candidate):
+            raise ValueError("refund relationship is not an active warning")
+        now = datetime.now()
+        evidence = (*candidate.evidence, WARNING_ACKNOWLEDGED)
+        event = RefundReviewEvent(
+            event_id=str(uuid.uuid4()),
+            relationship_id=relationship_id,
+            action="warning_acknowledged",
+            before={"status": "warning", "evidence": list(candidate.evidence)},
+            after={"status": "confirmed", "evidence": list(evidence)},
+            actor=actor,
+            created_at=now,
+        )
+        with self.store.transaction() as connection:
+            connection.execute(
+                "UPDATE transaction_relationships SET evidence_json = ?, reviewed_at = ?, "
+                "reviewed_by = ? WHERE relationship_id = ? AND status = 'confirmed'",
+                (json.dumps(evidence, ensure_ascii=False), now.isoformat(), actor, relationship_id),
+            )
+            self._insert_event(connection, event)
+        return event
+
+    def escalate_warning(self, relationship_id: str, actor: str) -> RefundReviewEvent:
+        """Undo an automatic warning decision and restore all choices for required review."""
+
+        candidate = self._get(relationship_id)
+        if candidate.status != "confirmed" or not self._is_warning(candidate):
+            raise ValueError("refund relationship is not an active warning")
+        now = datetime.now()
+        event = RefundReviewEvent(
+            event_id=str(uuid.uuid4()),
+            relationship_id=relationship_id,
+            action="warning_escalated",
+            before={"status": "warning", "selected_relationship_id": relationship_id},
+            after={"status": "pending", "requires_manual_review": True},
+            actor=actor,
+            created_at=now,
+        )
+        with self.store.transaction() as connection:
+            connection.execute(
+                """
+                UPDATE transaction_relationships
+                SET status = 'pending', reviewed_at = NULL, reviewed_by = NULL
+                WHERE relationship_type = 'refund' AND from_canonical_id = ?
+                  AND status IN ('confirmed', 'superseded')
+                """,
+                (candidate.refund_canonical_id,),
+            )
+            connection.execute(
+                "UPDATE canonical_transactions SET review_status = 'pending' WHERE canonical_id = ?",
+                (candidate.refund_canonical_id,),
+            )
+            self._insert_event(connection, event)
+        return event
+
+    def resolve_warnings(
+        self, relationship_ids: list[str], decision: str, actor: str
+    ) -> list[RefundReviewEvent]:
+        """Resolve a user-selected warning batch as accepted or escalated."""
+
+        if decision not in {"acknowledge", "escalate", "restore"}:
+            raise ValueError("decision must be acknowledge, escalate, or restore")
+        if not relationship_ids:
+            raise ValueError("relationship_ids must not be empty")
+        if len(set(relationship_ids)) != len(relationship_ids):
+            raise ValueError("relationship_ids must not contain duplicates")
+        operation = {
+            "acknowledge": self.acknowledge_warning,
+            "escalate": self.escalate_warning,
+            "restore": self.restore_warning,
+        }[decision]
+        return [operation(relationship_id, actor) for relationship_id in relationship_ids]
+
+    def restore_warning(self, relationship_id: str, actor: str) -> RefundReviewEvent:
+        """Undo acknowledgement and return a resolved warning to the active warning queue."""
+
+        candidate = self._get(relationship_id)
+        if candidate.status != "confirmed" or WARNING_ACKNOWLEDGED not in candidate.evidence:
+            raise ValueError("refund relationship is not an acknowledged warning")
+        now = datetime.now()
+        evidence = tuple(item for item in candidate.evidence if item != WARNING_ACKNOWLEDGED)
+        event = RefundReviewEvent(
+            event_id=str(uuid.uuid4()),
+            relationship_id=relationship_id,
+            action="warning_restored",
+            before={"status": "acknowledged", "evidence": list(candidate.evidence)},
+            after={"status": "warning", "evidence": list(evidence)},
+            actor=actor,
+            created_at=now,
+        )
+        with self.store.transaction() as connection:
+            connection.execute(
+                "UPDATE transaction_relationships SET evidence_json = ?, reviewed_at = ?, "
+                "reviewed_by = ? WHERE relationship_id = ? AND status = 'confirmed'",
+                (json.dumps(evidence, ensure_ascii=False), now.isoformat(), actor, relationship_id),
+            )
+            self._insert_event(connection, event)
+        return event
+
+    @staticmethod
+    def _is_warning(candidate: RefundCandidate) -> bool:
+        return WARNING_ACKNOWLEDGED not in candidate.evidence and (
+            candidate.is_ambiguous or "amount_partial" in candidate.evidence
+        )
+
+    def _refund_rank(self, candidate: RefundCandidate) -> tuple[Any, ...]:
+        refund = self.store.get_canonical(candidate.refund_canonical_id)
+        original = self.store.get_canonical(candidate.original_canonical_id)
+        if refund is None or original is None:
+            raise KeyError(candidate.relationship_id)
+        return (
+            not _orders_match(refund, original),
+            (refund.booking_date - original.booking_date).days,
+            original.transaction_time or datetime.combine(original.booking_date, datetime.min.time()),
+            original.canonical_id,
+        )
+
+    def _transaction_order(self, canonical_id: str) -> tuple[Any, ...]:
+        transaction = self.store.get_canonical(canonical_id)
+        if transaction is None:
+            raise KeyError(canonical_id)
+        return (
+            transaction.transaction_time
+            or datetime.combine(transaction.booking_date, datetime.min.time()),
+            transaction.canonical_id,
+        )
+
+    def _has_refund_capacity(self, candidate: RefundCandidate) -> bool:
+        original = self.store.get_canonical(candidate.original_canonical_id)
+        if original is None:
+            return False
+        rows = self.store.connection.execute(
+            """
+            SELECT amount FROM transaction_relationships
+            WHERE relationship_type = 'refund' AND to_canonical_id = ?
+              AND status = 'confirmed'
+            """,
+            (original.canonical_id,),
+        ).fetchall()
+        allocated = sum((Decimal(row["amount"]) for row in rows), Decimal("0"))
+        return allocated + candidate.amount <= abs(original.amount)
 
     def confirm(self, relationship_id: str, actor: str) -> RefundReviewEvent:
         candidate = self._get(relationship_id)
@@ -177,6 +349,21 @@ class RefundRelationshipService:
             )
             self._insert_event(connection, event)
         return event
+
+    def exclude_refund(self, relationship_id: str, actor: str, reason: str) -> list[RefundReviewEvent]:
+        """Reject every pending relationship and soft-delete the reviewed refund transaction."""
+
+        candidate = self._get(relationship_id)
+        related = [
+            item
+            for item in self.list_candidates("pending")
+            if item.refund_canonical_id == candidate.refund_canonical_id
+        ]
+        if not related:
+            raise ValueError("refund candidate has already been decided")
+        events = [self.reject(item.relationship_id, actor) for item in related]
+        self.store.soft_delete_canonical(candidate.refund_canonical_id, actor, reason)
+        return events
 
     def list_events(self, relationship_id: str) -> list[RefundReviewEvent]:
         rows = self.store.connection.execute(
@@ -331,3 +518,33 @@ def _merchant_matches(left: str, right: str) -> bool:
     if len(left_clean) < 2 or len(right_clean) < 2:
         return False
     return left_clean in right_clean or right_clean in left_clean
+
+
+def _orders_match(refund: CanonicalTransaction, original: CanonicalTransaction) -> bool:
+    refund_orders = {
+        link.raw_transaction.merchant_order_id
+        for link in refund.source_links
+        if link.raw_transaction.merchant_order_id
+    }
+    original_orders = {
+        link.raw_transaction.merchant_order_id
+        for link in original.source_links
+        if link.raw_transaction.merchant_order_id
+    }
+    if refund_orders & original_orders:
+        return True
+    refund_ids = {
+        link.raw_transaction.transaction_id
+        for link in refund.source_links
+        if link.raw_transaction.transaction_id
+    }
+    original_ids = {
+        link.raw_transaction.transaction_id
+        for link in original.source_links
+        if link.raw_transaction.transaction_id
+    }
+    return any(
+        refund_id == original_id or refund_id.startswith(f"{original_id}_")
+        for refund_id in refund_ids
+        for original_id in original_ids
+    )

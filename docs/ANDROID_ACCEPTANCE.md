@@ -99,6 +99,24 @@ python -m beancount_dedup.archive_cli import \
    Unsupported extensions, oversized files, unsupported content and damaged statements must be
    reported by filename as not queued or unprocessed, without partial ledger writes.
 
+## Review priority and actions
+
+Process **Required** items first, then inspect non-blocking Warnings. The complete outcome set for a
+Required item is: accept into the ledger, correct and accept, link/merge, keep independent, exclude,
+or defer. Exclusion affects statistics and exports but preserves imported source evidence; deferred
+items remain in the Required queue.
+
+A Warning is an ambiguous or partial-refund decision that the system has already applied. It supports
+multi-select and select-all batch handling:
+
+- **Batch accept** needs no second confirmation. It keeps the automatic relationship, clears the
+  Warning, and records it under **Accepted**, where it can be restored to Warning at any time.
+- **Reject** undoes the automatic relationship and moves it to Required without deleting source data;
+  finish it there using the complete outcome set above.
+
+During acceptance, exercise batch accept, restore from Accepted, and rejection rollback, and confirm
+that all three operations leave audit events.
+
 ## Pass criteria
 
 - The workflow needs no network service, network permission or broad all-files permission.

@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -18,16 +19,19 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
     private val list = LinearLayout(context)
     private val progress = ProgressBar(context)
     private var reviewType = "imports"
+    private val selectedWarnings = mutableSetOf<String>()
+    private val warningChecks = mutableListOf<CheckBox>()
 
     init {
         orientation = VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(24))
         addView(TextView(context).apply { text = "待处理"; textSize = 26f; setTypeface(typeface, Typeface.BOLD) })
+        addView(TextView(context).apply { text = "优先处理必须项：确认并入、修正并入、关联/合并、保留独立、排除，或暂缓。" })
         addView(HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             addView(LinearLayout(context).apply {
                 orientation = HORIZONTAL
-                listOf("导入" to "imports", "归并" to "matches", "退款" to "refunds", "分类" to "classifications").forEach { (label, value) ->
+                listOf("导入" to "imports", "归并" to "matches", "退款" to "refunds", "分类" to "classifications", "警告" to "warnings", "已通过" to "acknowledged").forEach { (label, value) ->
                     addView(Button(context).apply { text = label; minHeight = dp(48); setOnClickListener { reviewType = value; reload() } })
                 }
             })
@@ -46,8 +50,9 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
     }
 
     private fun loadStandardReviews() {
-        val route = mapOf("matches" to "candidates", "refunds" to "refunds", "classifications" to "classifications").getValue(reviewType)
-        client.request("GET", "/api/v1/review/$route?status=pending&page_size=100") { result ->
+        val route = mapOf("matches" to "candidates", "refunds" to "refunds", "classifications" to "classifications", "warnings" to "refunds", "acknowledged" to "refunds").getValue(reviewType)
+        val query = when (reviewType) { "warnings" -> "attention=warning"; "acknowledged" -> "attention=acknowledged"; else -> "status=pending" }
+        client.request("GET", "/api/v1/review/$route?$query&page_size=100") { result ->
             progress.visibility = View.GONE
             result.onSuccess { render(it.getJSONObject("body").getJSONArray("data"), reviewType) }
                 .onFailure { showError(it) }
@@ -82,23 +87,57 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
 
     private fun render(rows: JSONArray, type: String) {
         list.removeAllViews()
+        selectedWarnings.clear()
+        warningChecks.clear()
         if (rows.length() == 0) { list.addView(message("这一类没有待审核项")); return }
+        if (type == "warnings" || type == "acknowledged") {
+            list.addView(LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                addView(Button(context).apply {
+                    text = "全选"
+                    setOnClickListener {
+                        warningChecks.forEach { it.isChecked = true }
+                    }
+                }, LayoutParams(0, dp(48), 1f))
+                if (type == "warnings") {
+                    addView(Button(context).apply { text = "不通过"; setOnClickListener { resolveWarnings("escalate") } }, LayoutParams(0, dp(48), 1f))
+                    addView(Button(context).apply { text = "批量通过"; setOnClickListener { resolveWarnings("acknowledge") } }, LayoutParams(0, dp(48), 1f))
+                } else addView(Button(context).apply { text = "恢复 Warning"; setOnClickListener { resolveWarnings("restore") } }, LayoutParams(0, dp(48), 2f))
+            })
+        }
         for (index in 0 until rows.length()) {
             val item = rows.getJSONObject(index)
             val endpoint = endpoint(type, item)
             list.addView(LinearLayout(context).apply {
                 orientation = VERTICAL
                 setPadding(0, dp(10), 0, dp(10))
+                if (type == "warnings" || type == "acknowledged") addView(CheckBox(context).apply {
+                    val relationshipId = item.getString("relationship_id")
+                    text = "选择此项"
+                    isChecked = selectedWarnings.contains(relationshipId)
+                    setOnCheckedChangeListener { _, checked -> if (checked) selectedWarnings.add(relationshipId) else selectedWarnings.remove(relationshipId) }
+                    warningChecks.add(this)
+                })
                 addView(Button(context).apply {
                     isAllCaps = false
                     gravity = Gravity.START
                     text = "${title(type, item)}\n${subtitle(type, item)}"
                     setOnClickListener { showDetail(type, item, endpoint) }
                 })
-                addView(LinearLayout(context).apply {
+                if (type != "warnings" && type != "acknowledged") addView(LinearLayout(context).apply {
                     orientation = HORIZONTAL
-                    addView(Button(context).apply { text = "拒绝"; setOnClickListener { decide(endpoint, "reject") } }, LayoutParams(0, dp(48), 1f))
-                    addView(Button(context).apply { text = "确认"; setOnClickListener { decide(endpoint, "confirm") } }, LayoutParams(0, dp(48), 1f))
+                    addView(Button(context).apply {
+                        text = "修正/排除"
+                        setOnClickListener { if (type == "imports" || type == "matches") showModify(type, item, endpoint) else showCanonicalEdit(type, item, endpoint) }
+                    }, LayoutParams(0, dp(48), 1f))
+                    addView(Button(context).apply {
+                        text = when (type) { "matches", "refunds" -> "保留独立"; "classifications" -> "保留原状"; else -> "排除" }
+                        setOnClickListener { decide(endpoint, "reject") }
+                    }, LayoutParams(0, dp(48), 1f))
+                    addView(Button(context).apply {
+                        text = if (type == "matches" || type == "refunds") "关联/合并" else "确认并入"
+                        setOnClickListener { decide(endpoint, "confirm") }
+                    }, LayoutParams(0, dp(48), 1f))
                 })
             })
         }
@@ -145,6 +184,38 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
             .show()
     }
 
+    private fun showCanonicalEdit(type: String, item: JSONObject, reviewEndpoint: String) {
+        val source = if (type == "refunds") item.getJSONObject("refund") else item.getJSONObject("transaction")
+        val canonicalId = source.getString("canonical_id")
+        val fields = LinearLayout(context).apply { orientation = VERTICAL; setPadding(dp(18), 0, dp(18), 0) }
+        val merchant = edit("商户", source.optString("merchant"))
+        val category = edit("分类", source.optString("category"))
+        val notes = edit("备注", source.optString("notes"))
+        listOf(merchant, category, notes).forEach(fields::addView)
+        AlertDialog.Builder(context)
+            .setTitle("修正并入或排除")
+            .setView(fields)
+            .setPositiveButton("保存修正") { _, _ ->
+                val changes = JSONObject().put("merchant", merchant.text.toString().trim())
+                    .put("category", category.text.toString().trim()).put("notes", notes.text.toString().trim())
+                client.request("PATCH", "/api/v1/transactions/$canonicalId", JSONObject().put("actor", "android-user").put("changes", changes)) { result ->
+                    result.onSuccess { reload() }.onFailure { showError(it) }
+                }
+            }
+            .setNeutralButton("排除") { _, _ -> confirmExclusion(reviewEndpoint) }
+            .setNegativeButton("暂缓", null)
+            .show()
+    }
+
+    private fun confirmExclusion(reviewEndpoint: String) {
+        AlertDialog.Builder(context).setMessage("确认排除此账单？原始导入证据仍会保留，可从已删除记录恢复。")
+            .setPositiveButton("确认排除") { _, _ ->
+                client.request("POST", "$reviewEndpoint/exclude", JSONObject().put("actor", "android-user").put("reason", "人工审核排除")) { result ->
+                    result.onSuccess { reload() }.onFailure { showError(it) }
+                }
+            }.setNegativeButton("取消", null).show()
+    }
+
     private fun decide(endpoint: String, action: String) {
         AlertDialog.Builder(context).setMessage(if (action == "confirm") "确认这项审核决定？" else "拒绝这项建议？")
             .setPositiveButton("继续") { _, _ ->
@@ -154,21 +225,32 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
             }.setNegativeButton("取消", null).show()
     }
 
+    private fun resolveWarnings(decision: String) {
+        if (selectedWarnings.isEmpty()) { showError(IllegalArgumentException("请先选择警告项")); return }
+        val ids = JSONArray().apply { selectedWarnings.forEach { relationshipId -> put(relationshipId) } }
+        val body = JSONObject().put("actor", "android-user").put("decision", decision).put("relationship_ids", ids)
+        client.request("POST", "/api/v1/review/refunds/warnings/batch", body) { result ->
+            result.onSuccess { reload() }.onFailure { showError(it) }
+        }
+    }
+
     private fun endpoint(type: String, item: JSONObject): String = when (type) {
         "imports" -> "/api/v1/import-reviews/${item.getString("session_id")}/items/${item.getString("review_item_id")}"
         "matches" -> "/api/v1/review/candidates/${item.getString("candidate_id")}"
-        "refunds" -> "/api/v1/review/refunds/${item.getString("relationship_id")}"
+        "refunds", "warnings", "acknowledged" -> "/api/v1/review/refunds/${item.getString("relationship_id")}"
         else -> "/api/v1/review/classifications/${item.getString("candidate_id")}"
     }
 
     private fun title(type: String, item: JSONObject): String {
-        val source = when (type) { "imports" -> item.optJSONObject("raw"); "matches" -> item.optJSONObject("payment"); "refunds" -> item.optJSONObject("refund"); else -> item.optJSONObject("transaction") }
+        val source = when (type) { "imports" -> item.optJSONObject("raw"); "matches" -> item.optJSONObject("payment"); "refunds", "warnings", "acknowledged" -> item.optJSONObject("refund"); else -> item.optJSONObject("transaction") }
         return source?.optString("merchant")?.takeIf { it.isNotBlank() } ?: source?.optString("counterparty")?.takeIf { it.isNotBlank() } ?: "未命名交易"
     }
 
     private fun subtitle(type: String, item: JSONObject) = when (type) {
         "imports" -> item.optString("item_type", "导入变化")
-        "matches", "refunds" -> "置信度 ${item.optString("confidence", "-")}"
+        "matches", "refunds" -> "必须审核 · 置信度 ${item.optString("confidence", "-")}"
+        "warnings" -> "Warning · 已自动归属 · ${if (item.optBoolean("is_ambiguous")) "多候选" else "部分退款"}"
+        "acknowledged" -> "Warning · 已通过 · 可恢复"
         else -> "建议 ${item.optString("proposed_type", "-")} / ${item.optString("proposed_category", "未分类")}"
     }
 

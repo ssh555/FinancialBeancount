@@ -72,6 +72,16 @@ def test_confirm_updates_type_and_category_with_audit(store):
     assert service.list_events(candidate.candidate_id) == [event]
 
 
+def test_high_confidence_keyword_classifications_can_be_confirmed_in_batch(store):
+    item = transaction("微信零钱充值")
+    store.add_canonical(item)
+    service = TransactionClassificationService(store)
+    service.generate_candidates()
+
+    assert service.confirm_high_confidence("acceptance") == 1
+    assert store.get_canonical(item.canonical_id).tx_type == TransactionType.TRANSFER
+
+
 def test_reject_preserves_original_transaction_type(store):
     item = transaction("余额提现", amount="100")
     store.add_canonical(item)

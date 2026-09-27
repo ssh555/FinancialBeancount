@@ -73,6 +73,8 @@ def test_bundled_web_client_assets_are_available_and_whitelisted():
     assert b"data-import-files" in script.body
     assert b"data-import-folder" in script.body
     assert b"importQueuedStatements" in script.body
+    assert b"/api/v1/review/refunds/warnings/batch" in script.body
+    assert b'"restore"' in script.body
     assert "未处理文件".encode() in script.body
     assert manifest is not None
     assert load_web_asset("/icon.svg").content_type == "image/svg+xml"
@@ -504,6 +506,94 @@ def test_refund_review_api_scans_details_confirms_and_audits(store):
     assert confirmed.body["data"]["action"] == "confirmed"
     assert events.body["data"][0]["actor"] == "mobile-user"
     assert store.get_canonical(refund.canonical_id).tx_type == TransactionType.REFUND
+
+
+def test_refund_warning_batch_requires_confirmation_and_can_escalate(store):
+    for amount, merchant, day in (("-100", "高铁票", 1), ("80", "高铁票退款", 5)):
+        store.add_canonical(
+            CanonicalTransaction(
+                transaction_time=datetime(2026, 3, day, 12, 0),
+                booking_date=date(2026, 3, day),
+                amount=amount,
+                direction="expense" if amount.startswith("-") else "income",
+                merchant=merchant,
+                status="退款成功" if not amount.startswith("-") else "",
+                tx_type=TransactionType.EXPENSE if amount.startswith("-") else TransactionType.INCOME,
+            )
+        )
+    api = MobileLedgerApi(store)
+    api.dispatch("POST", "/api/v1/review/refunds/scan", {})
+    api.refund_review.confirm_preferred_refunds("automatic")
+    warning = api.dispatch("GET", "/api/v1/review/refunds?attention=warning")
+    relationship_id = warning.body["data"][0]["relationship_id"]
+    payload = {
+        "actor": "mobile-user",
+        "decision": "acknowledge",
+        "relationship_ids": [relationship_id],
+    }
+
+    accepted = api.dispatch("POST", "/api/v1/review/refunds/warnings/batch", payload)
+
+    assert accepted.body["data"]["processed_count"] == 1
+    assert api.dispatch("GET", "/api/v1/review/refunds?attention=warning").body["meta"]["total"] == 0
+    acknowledged = api.dispatch("GET", "/api/v1/review/refunds?attention=acknowledged")
+    assert acknowledged.body["meta"]["total"] == 1
+    restored = api.dispatch(
+        "POST", "/api/v1/review/refunds/warnings/batch",
+        {"actor": "mobile-user", "decision": "restore", "relationship_ids": [relationship_id]},
+    )
+    assert restored.status == 200
+    assert api.dispatch("GET", "/api/v1/review/refunds?attention=warning").body["meta"]["total"] == 1
+    api.dispatch("POST", "/api/v1/review/refunds/warnings/batch", payload)
+
+    # A fresh warning can be rejected without the approval phrase and becomes required work.
+    second_original = CanonicalTransaction(
+        transaction_time=datetime(2026, 4, 1, 12, 0), booking_date=date(2026, 4, 1),
+        amount="-50", direction="expense", merchant="医院", tx_type=TransactionType.EXPENSE,
+    )
+    second_refund = CanonicalTransaction(
+        transaction_time=datetime(2026, 4, 2, 12, 0), booking_date=date(2026, 4, 2),
+        amount="40", direction="income", merchant="医院退款", status="退款成功",
+        tx_type=TransactionType.INCOME,
+    )
+    store.add_canonical(second_original)
+    store.add_canonical(second_refund)
+    api.refund_review.generate_candidates()
+    api.refund_review.confirm_preferred_refunds("automatic")
+    second_warning = api.dispatch("GET", "/api/v1/review/refunds?attention=warning")
+    second_id = second_warning.body["data"][0]["relationship_id"]
+    escalated = api.dispatch(
+        "POST", "/api/v1/review/refunds/warnings/batch",
+        {"actor": "mobile-user", "decision": "escalate", "relationship_ids": [second_id]},
+    )
+    assert escalated.status == 200
+    assert api.dispatch("GET", "/api/v1/review/refunds?attention=required").body["meta"]["total"] >= 1
+
+
+def test_required_refund_can_be_excluded_without_deleting_source_evidence(store):
+    original = CanonicalTransaction(
+        transaction_time=datetime(2026, 5, 1, 12, 0), booking_date=date(2026, 5, 1),
+        amount="-50", direction="expense", merchant="医院", tx_type=TransactionType.EXPENSE,
+    )
+    refund = CanonicalTransaction(
+        transaction_time=datetime(2026, 5, 2, 12, 0), booking_date=date(2026, 5, 2),
+        amount="40", direction="income", merchant="医院退款", status="退款成功",
+        tx_type=TransactionType.INCOME,
+    )
+    store.add_canonical(original)
+    store.add_canonical(refund)
+    api = MobileLedgerApi(store)
+    relationship = api.refund_review.generate_candidates()[0]
+
+    response = api.dispatch(
+        "POST", f"/api/v1/review/refunds/{relationship.relationship_id}/exclude",
+        {"actor": "mobile-user", "reason": "账单有误"},
+    )
+
+    assert response.status == 200
+    assert response.body["data"]["excluded"] is True
+    assert store.is_canonical_deleted(refund.canonical_id)
+    assert api.dispatch("GET", "/api/v1/review/refunds?attention=required").body["meta"]["total"] == 0
 
 
 def test_non_consumption_classification_api_scans_and_reviews(store):

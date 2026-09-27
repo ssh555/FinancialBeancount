@@ -35,6 +35,8 @@ def test_audit_flags_same_balance_and_counterparty_without_mutation(tmp_path: Pa
     assert report["read_only"] is True
     assert report["bank_balance_collisions"]["group_count"] == 1
     assert report["bank_balance_collisions"]["high_priority_count"] == 1
+    assert report["refund_relationships"]["confirmed_count"] == 0
+    assert report["non_consumption_classifications"]["pending_count"] == 0
     assert report["bank_balance_collisions"]["groups"][0]["row_count"] == 2
     with LedgerStore(database) as store:
         assert store.connection.total_changes == 0

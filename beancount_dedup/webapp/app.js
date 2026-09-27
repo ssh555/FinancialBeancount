@@ -5,7 +5,7 @@ const state = {
   reviewType: "imports",
   transactionPage: 1,
   transactions: [],
-  counts: { imports: 0, matches: 0, refunds: 0, classifications: 0 },
+  counts: { imports: 0, matches: 0, refunds: 0, classifications: 0, warnings: 0, acknowledged: 0 },
   importFormats: [],
   importQueue: [],
   timelinePeriod: "month",
@@ -217,10 +217,12 @@ async function refreshCounts() {
     matches: "/api/v1/review/candidates?status=pending&page_size=1",
     refunds: "/api/v1/review/refunds?status=pending&page_size=1",
     classifications: "/api/v1/review/classifications?status=pending&page_size=1",
+    warnings: "/api/v1/review/refunds?attention=warning&page_size=1",
+    acknowledged: "/api/v1/review/refunds?attention=acknowledged&page_size=1",
   };
   const results = await Promise.allSettled(Object.entries(paths).map(async ([key, path]) => [key, await request(path)]));
   for (const result of results) if (result.status === "fulfilled") state.counts[result.value[0]] = result.value[1].meta.total;
-  const total = Object.values(state.counts).reduce((sum, count) => sum + count, 0);
+  const total = Object.entries(state.counts).filter(([key]) => !["warnings", "acknowledged"].includes(key)).reduce((sum, [, count]) => sum + count, 0);
   for (const [key, count] of Object.entries(state.counts)) $(`#count-${key}`).textContent = count;
   $("#review-badge").textContent = total > 99 ? "99+" : total;
   $("#review-badge").classList.toggle("hidden", !total);
@@ -232,9 +234,14 @@ async function loadReviews() {
   try {
     if (state.reviewType === "imports") await loadImportReviews(list);
     else {
-      const routes = { matches: "candidates", refunds: "refunds", classifications: "classifications" };
-      const { data } = await request(`/api/v1/review/${routes[state.reviewType]}?status=pending&page_size=100`);
-      list.innerHTML = data.length ? data.map(item => reviewCard(state.reviewType, item)).join("") : empty("这一类没有待审核项");
+      const routes = { matches: "candidates", refunds: "refunds", classifications: "classifications", warnings: "refunds", acknowledged: "refunds" };
+      const query = state.reviewType === "warnings" ? "attention=warning" : state.reviewType === "acknowledged" ? "attention=acknowledged" : "status=pending";
+      const { data } = await request(`/api/v1/review/${routes[state.reviewType]}?${query}&page_size=100`);
+      if (state.reviewType === "warnings" && data.length) {
+        list.innerHTML = `<div class="warning-toolbar"><label><input type="checkbox" data-warning-select-all> 全选</label><span>已选 <b id="warning-selected-count">0</b> 项</span><button class="button danger" data-warning-batch="escalate" type="button">不通过并转必须处理</button><button class="button primary" data-warning-batch="acknowledge" type="button">批量通过</button></div>${data.map(item => reviewCard(state.reviewType, item)).join("")}`;
+      } else if (state.reviewType === "acknowledged" && data.length) {
+        list.innerHTML = `<div class="warning-toolbar"><label><input type="checkbox" data-warning-select-all> 全选</label><span>已选 <b id="warning-selected-count">0</b> 项</span><button class="button secondary" data-warning-batch="restore" type="button">恢复为 Warning</button></div>${data.map(item => reviewCard(state.reviewType, item)).join("")}`;
+      } else list.innerHTML = data.length ? `<p class="review-guide">处理结果：确认并入、修正并入、关联/合并、保留独立、排除，或暂缓留在队列。</p>${data.map(item => reviewCard(state.reviewType, item)).join("")}` : empty(state.reviewType === "warnings" ? "没有警告项" : state.reviewType === "acknowledged" ? "没有已通过记录" : "这一类没有必须审核项");
     }
   } catch (error) { renderError(list, error); }
 }
@@ -247,23 +254,48 @@ async function loadImportReviews(list) {
 }
 
 function reviewCard(type, item) {
-  let id, title, meta, endpoint;
+  let id, title, meta, endpoint, rejectLabel = "排除", confirmLabel = "确认并入", correctionEndpoint;
   if (type === "imports") {
     id = item.review_item_id; title = merchant(item.raw); meta = `${item.item_type} · ${item.raw.booking_date}`;
     endpoint = `/api/v1/import-reviews/${item.session_id}/items/${id}`;
+    correctionEndpoint = endpoint;
   } else if (type === "matches") {
     id = item.candidate_id; title = `${merchant(item.payment)} ↔ ${merchant(item.bank)}`; meta = `置信度 ${item.confidence} · ${item.conflict_count} 个冲突`;
     endpoint = `/api/v1/review/candidates/${id}`;
-  } else if (type === "refunds") {
+    correctionEndpoint = endpoint; rejectLabel = "保留独立"; confirmLabel = "关联/合并";
+  } else if (type === "refunds" || type === "warnings" || type === "acknowledged") {
     id = item.relationship_id; title = `${merchant(item.refund)} ↔ ${merchant(item.original)}`; meta = `退款 ${money(item.amount)} · 置信度 ${item.confidence}`;
     endpoint = `/api/v1/review/refunds/${id}`;
+    correctionEndpoint = `/api/v1/transactions/${item.refund.canonical_id}`; rejectLabel = "保留独立"; confirmLabel = "关联/合并";
   } else {
     id = item.candidate_id; title = merchant(item.transaction); meta = `建议：${item.proposed_type} / ${item.proposed_category || "未分类"}`;
     endpoint = `/api/v1/review/classifications/${id}`;
+    correctionEndpoint = `/api/v1/transactions/${item.transaction.canonical_id}`; rejectLabel = "保留原状";
   }
-  return `<article class="list-card"><button class="plain-detail" type="button" data-endpoint="${escapeHtml(endpoint)}" data-title="${escapeHtml(title)}">
-    <span class="list-top"><span class="list-title">${escapeHtml(title)}</span><span class="tag">待审核</span></span><span class="list-meta">${escapeHtml(meta)}</span></button>
-    <div class="review-actions"><button class="button danger" data-decision="reject" data-endpoint="${escapeHtml(endpoint)}" type="button">拒绝</button><button class="button primary" data-decision="confirm" data-endpoint="${escapeHtml(endpoint)}" type="button">确认</button></div></article>`;
+  const warning = type === "warnings" || type === "acknowledged";
+  return `<article class="list-card">${warning ? `<label class="warning-select"><input type="checkbox" data-warning-select value="${escapeHtml(id)}"> 选择此项</label>` : ""}<button class="plain-detail" type="button" data-endpoint="${escapeHtml(endpoint)}" data-title="${escapeHtml(title)}">
+    <span class="list-top"><span class="list-title">${escapeHtml(title)}</span><span class="tag">${type === "acknowledged" ? "Warning · 已通过" : warning ? "Warning · 已处理" : "必须审核"}</span></span><span class="list-meta">${escapeHtml(meta)}</span></button>
+    ${warning ? "" : `<div class="review-actions"><button class="button secondary" data-correction-endpoint="${escapeHtml(correctionEndpoint)}" type="button">修正/排除</button><button class="button danger" data-decision="reject" data-endpoint="${escapeHtml(endpoint)}" type="button">${rejectLabel}</button><button class="button primary" data-decision="confirm" data-endpoint="${escapeHtml(endpoint)}" type="button">${confirmLabel}</button></div><p class="review-defer">暂不确定时无需操作，该项会继续保留在必须处理队列。</p>`}</article>`;
+}
+
+function updateWarningSelection() {
+  const boxes = $$('[data-warning-select]');
+  const selected = boxes.filter(box => box.checked).length;
+  const count = $("#warning-selected-count"); if (count) count.textContent = selected;
+  const all = $('[data-warning-select-all]'); if (all) { all.checked = boxes.length > 0 && selected === boxes.length; all.indeterminate = selected > 0 && selected < boxes.length; }
+}
+
+async function resolveWarningBatch(decision) {
+  const relationshipIds = $$('[data-warning-select]:checked').map(box => box.value);
+  if (!relationshipIds.length) { toast("请先选择警告项"); return; }
+  try {
+    await request("/api/v1/review/refunds/warnings/batch", {
+      method: "POST",
+      body: JSON.stringify({ actor: actor(), decision, relationship_ids: relationshipIds }),
+    });
+    toast(decision === "acknowledge" ? `已通过 ${relationshipIds.length} 项，可在“已通过”中撤回` : decision === "restore" ? `已恢复 ${relationshipIds.length} 项 Warning` : `已将 ${relationshipIds.length} 项转入必须处理`);
+    await loadReviews();
+  } catch (error) { toast(error.message); }
 }
 
 async function decide(button) {
@@ -278,18 +310,18 @@ async function decide(button) {
   } catch (error) { toast(error.message); button.disabled = false; }
 }
 
-async function showDetail(endpoint, title) {
+async function showDetail(endpoint, title, reviewEndpoint = "") {
   const dialog = $("#detail-dialog");
   $("#dialog-title").textContent = title || "详情";
   $("#dialog-content").innerHTML = '<div class="skeleton"></div>';
   dialog.showModal();
   try {
     const { data } = await request(endpoint);
-    $("#dialog-content").innerHTML = detailMarkup(data, endpoint);
+    $("#dialog-content").innerHTML = detailMarkup(data, endpoint, reviewEndpoint);
   } catch (error) { renderError($("#dialog-content"), error); }
 }
 
-function detailMarkup(data, endpoint) {
+function detailMarkup(data, endpoint, reviewEndpoint = "") {
   const primary = data.transaction || data.canonical || data.payment || data.refund || data.raw || data;
   const fields = [
     ["日期", primary.booking_date], ["金额", primary.amount != null ? money(primary.amount) : null],
@@ -317,7 +349,7 @@ function detailMarkup(data, endpoint) {
     <label>状态<input name="status" value="${escapeHtml(primary.status || "")}"></label>
     <label>备注<input name="notes" value="${escapeHtml(primary.notes || "")}"></label>
     <button class="button primary" type="submit">保存修改</button>
-    <button class="button danger" data-soft-delete type="button">移入已删除记录</button>
+    <button class="button danger" data-soft-delete ${reviewEndpoint ? `data-review-exclude="${escapeHtml(reviewEndpoint)}"` : ""} type="button">移入已删除记录</button>
   </form>` : "";
   return `<dl class="detail-grid">${fields.map(([key, value]) => `<dt>${key}</dt><dd>${escapeHtml(value)}</dd>`).join("")}</dl>${editForm}${transactionForm}
     <h3 style="margin-top:22px">完整审计数据</h3><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
@@ -564,6 +596,8 @@ document.addEventListener("click", event => {
   const nav = event.target.closest("[data-view]"); if (nav) showView(nav.dataset.view);
   const tab = event.target.closest("[data-review]"); if (tab) { state.reviewType = tab.dataset.review; $$("[data-review]").forEach(node => node.classList.toggle("active", node === tab)); loadReviews(); }
   const decision = event.target.closest("[data-decision]"); if (decision) decide(decision);
+  const correction = event.target.closest("[data-correction-endpoint]"); if (correction) showDetail(correction.dataset.correctionEndpoint, "修正、排除或查看原始信息", correction.closest(".list-card")?.querySelector("[data-decision]")?.dataset.endpoint || "");
+  const warningBatch = event.target.closest("[data-warning-batch]"); if (warningBatch) resolveWarningBatch(warningBatch.dataset.warningBatch);
   const detail = event.target.closest("[data-detail='transaction']"); if (detail) showDetail(`/api/v1/transactions/${detail.dataset.id}`, "交易详情");
   const endpoint = event.target.closest("[data-endpoint]:not([data-decision])"); if (endpoint) showDetail(endpoint.dataset.endpoint, endpoint.dataset.title);
   const removeImport = event.target.closest("[data-import-remove]"); if (removeImport) { state.importQueue = state.importQueue.filter(item => item.id !== removeImport.dataset.importRemove); renderImportQueue(); }
@@ -573,6 +607,10 @@ document.addEventListener("click", event => {
     globalThis.FinancialBeancountNative?.[actions[nativePicker.dataset.nativePicker]]?.();
   }
   if (event.target.closest("[data-action='refresh']")) showView(state.view);
+});
+document.addEventListener("change", event => {
+  if (event.target.matches("[data-warning-select-all]")) $$('[data-warning-select]').forEach(box => { box.checked = event.target.checked; });
+  if (event.target.matches("[data-warning-select], [data-warning-select-all]")) updateWarningSelection();
 });
 
 $("#detail-dialog").addEventListener("change", event => {
@@ -677,7 +715,8 @@ $("#detail-dialog").addEventListener("click", async event => {
   const form = button.closest("[data-transaction-edit]");
   if (!confirm("移除这条唯一交易？所有原始来源与审计记录都会保留。")) return;
   try {
-    await request(form.dataset.endpoint, { method: "DELETE", body: JSON.stringify({ actor: actor(), reason: "user_deleted" }) });
+    if (button.dataset.reviewExclude) await request(`${button.dataset.reviewExclude}/exclude`, { method: "POST", body: JSON.stringify({ actor: actor(), reason: "人工审核排除" }) });
+    else await request(form.dataset.endpoint, { method: "DELETE", body: JSON.stringify({ actor: actor(), reason: "user_deleted" }) });
     $("#detail-dialog").close(); toast("交易已软删除，可通过 API 恢复"); await loadTransactions(true);
   } catch (error) { toast(error.message); }
 });

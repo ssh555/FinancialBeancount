@@ -26,7 +26,12 @@ from .ledger_models import CanonicalTransaction, RawTransaction, ReviewStatus
 from .ledger_store import SCHEMA_VERSION, LedgerStore
 from .models import TransactionType, source_id_value
 from .portable_archive import export_portable_archive
-from .refund_relationships import RefundCandidate, RefundRelationshipService, RefundReviewEvent
+from .refund_relationships import (
+    WARNING_ACKNOWLEDGED,
+    RefundCandidate,
+    RefundRelationshipService,
+    RefundReviewEvent,
+)
 from .review import ImportReviewService, ReviewEvent, ReviewItem, ReviewSession
 from .statement_importer import StatementImporter
 from .statistics import StatisticsService
@@ -170,6 +175,8 @@ class MobileLedgerApi:
                         "ambiguous_count": sum(item.is_ambiguous for item in refund_candidates),
                     }
                 )
+            if method == "POST" and path == "/api/v1/review/refunds/warnings/batch":
+                return self._resolve_refund_warnings(body or {})
             if path.startswith("/api/v1/review/refunds/"):
                 return self._refund_route(method, path, body or {})
             if method == "GET" and path == "/api/v1/review/classifications":
@@ -406,14 +413,55 @@ class MobileLedgerApi:
 
     def _list_refunds(self, query: dict[str, list[str]]) -> ApiResponse:
         page, page_size = _pagination(query)
+        attention = query.get("attention", ["required"])[0]
+        if attention not in {"required", "warning", "acknowledged", "all"}:
+            raise ValueError("attention must be required, warning, acknowledged, or all")
         status = query.get("status", ["pending"])[0]
-        status_filter = None if status == "all" else status
+        status_filter = (
+            "pending"
+            if attention == "required"
+            else "confirmed"
+            if attention in {"warning", "acknowledged"}
+            else None if status == "all" else status
+        )
         candidates = self.refund_review.list_candidates(status_filter)
+        if attention == "warning":
+            candidates = [
+                item
+                for item in candidates
+                if WARNING_ACKNOWLEDGED not in item.evidence
+                and (item.is_ambiguous or "amount_partial" in item.evidence)
+            ]
+        elif attention == "acknowledged":
+            candidates = [item for item in candidates if WARNING_ACKNOWLEDGED in item.evidence]
         start = (page - 1) * page_size
         selected = candidates[start : start + page_size]
         return self._ok(
             [_refund_summary(item, self.store) for item in selected],
-            {"page": page, "page_size": page_size, "total": len(candidates), "status": status},
+            {
+                "page": page,
+                "page_size": page_size,
+                "total": len(candidates),
+                "status": status_filter or "all",
+                "attention": attention,
+            },
+        )
+
+    def _resolve_refund_warnings(self, body: dict[str, Any]) -> ApiResponse:
+        actor = _required_actor(body)
+        decision = _required_text(body, "decision")
+        relationship_ids = body.get("relationship_ids")
+        if not isinstance(relationship_ids, list) or not all(
+            isinstance(item, str) and item for item in relationship_ids
+        ):
+            raise TypeError("relationship_ids must be a list of non-empty strings")
+        events = self.refund_review.resolve_warnings(relationship_ids, decision, actor)
+        return self._ok(
+            {
+                "decision": decision,
+                "processed_count": len(events),
+                "events": [_refund_event_dict(event) for event in events],
+            }
         )
 
     def _refund_route(self, method: str, path: str, body: dict[str, Any]) -> ApiResponse:
@@ -433,6 +481,12 @@ class MobileLedgerApi:
             return self._ok(_refund_event_dict(self.refund_review.confirm(relationship_id, actor)))
         if method == "POST" and action == "reject":
             return self._ok(_refund_event_dict(self.refund_review.reject(relationship_id, actor)))
+        if method == "POST" and action == "exclude":
+            reason = body.get("reason", "人工审核排除")
+            if not isinstance(reason, str):
+                raise TypeError("reason must be a string")
+            events = self.refund_review.exclude_refund(relationship_id, actor, reason.strip())
+            return self._ok({"excluded": True, "events": [_refund_event_dict(item) for item in events]})
         return self._error(HTTPStatus.NOT_FOUND, "not_found", "API route not found")
 
     def _list_classifications(self, query: dict[str, list[str]]) -> ApiResponse:
@@ -466,6 +520,10 @@ class MobileLedgerApi:
         if method == "POST" and action == "reject":
             event = self.classification_review.reject(candidate_id, actor)
             return self._ok(_classification_event_dict(event))
+        if method == "POST" and action == "exclude":
+            event = self.classification_review.reject(candidate_id, actor)
+            self.store.soft_delete_canonical(candidate.canonical_id, actor, "人工审核排除")
+            return self._ok({"excluded": True, "event": _classification_event_dict(event)})
         return self._error(HTTPStatus.NOT_FOUND, "not_found", "API route not found")
 
     def _import_review_route(  # noqa: PLR0911

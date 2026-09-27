@@ -141,7 +141,7 @@ def test_native_android_review_covers_all_queues_and_decisions() -> None:
     source = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeReviewView.kt"
     ).read_text(encoding="utf-8")
-    for queue in ("imports", "matches", "refunds", "classifications"):
+    for queue in ("imports", "matches", "refunds", "classifications", "warnings"):
         assert f'"{queue}"' in source
     assert "/api/v1/import-reviews/" in source
     assert 'decide(endpoint, "confirm")' in source
@@ -149,6 +149,9 @@ def test_native_android_review_covers_all_queues_and_decisions() -> None:
     assert 'builder.setPositiveButton("人工修改")' in source
     assert 'if (type == "imports") "modify" else "confirm"' in source
     assert 'put("changes", changes)' in source
+    assert "/api/v1/review/refunds/warnings/batch" in source
+    assert 'resolveWarnings("escalate")' in source
+    assert 'resolveWarnings("restore")' in source
 
 
 def test_native_data_view_has_about_and_double_confirmed_clear() -> None:

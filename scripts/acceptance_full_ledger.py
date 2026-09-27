@@ -18,8 +18,10 @@ from beancount_dedup.portable_archive import (
     import_portable_archive,
     inspect_portable_archive,
 )
+from beancount_dedup.refund_relationships import RefundRelationshipService
 from beancount_dedup.review import ImportReviewService
 from beancount_dedup.statement_importer import StatementImporter
+from beancount_dedup.transaction_classification import TransactionClassificationService
 
 FORMAT_BY_FOLDER_SUFFIX = {
     ("微信", ".xlsx"): "wechat.xlsx",
@@ -115,6 +117,14 @@ def run_acceptance(bills_root: Path, output_directory: Path) -> dict[str, Any]:
         safe_confirmed_count = ImportReviewService(store).confirm_unmatched_without_candidates(
             "full-ledger-acceptance"
         )
+        classifications = TransactionClassificationService(store)
+        classifications.generate_candidates()
+        safe_classification_count = classifications.confirm_high_confidence(
+            "full-ledger-acceptance"
+        )
+        refunds = RefundRelationshipService(store)
+        refunds.generate_candidates()
+        refund_resolution = refunds.confirm_preferred_refunds("full-ledger-acceptance")
         counts = _table_counts(store)
         if not failures:
             export_portable_archive(store, archive)
@@ -146,6 +156,9 @@ def run_acceptance(bills_root: Path, output_directory: Path) -> dict[str, Any]:
         "restored_table_counts": restored_counts,
         "safe_confirmed_review_count": safe_confirmed_count,
         "exact_payment_match_count": exact_payment_match_count,
+        "safe_classification_count": safe_classification_count,
+        "safe_refund_count": refund_resolution["confirmed"],
+        "refund_warning_count": refund_resolution["warnings"],
         "pending_match_candidate_count": sum(item.status == "pending" for item in candidates)
         - exact_payment_match_count,
         "files": [asdict(item) for item in results],

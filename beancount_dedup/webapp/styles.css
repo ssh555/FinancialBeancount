@@ -85,6 +85,13 @@ input, select { width: 100%; min-height: 43px; padding: 9px 11px; border-radius:
 .segmented button.active { background: var(--card); color: var(--green); box-shadow: 0 2px 8px rgba(0,0,0,.06); font-weight: 750; }
 .review-actions { display: flex; gap: 8px; margin-top: 12px; }
 .review-actions .button { flex: 1; min-height: 38px; padding: 7px; font-size: .82rem; }
+.review-guide, .review-defer { color: var(--muted); font-size: .78rem; line-height: 1.5; }
+.review-guide { margin: 0 3px 2px; }
+.review-defer { margin: 8px 0 0; }
+.warning-toolbar { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--card); }
+.warning-toolbar span { margin-right: auto; color: var(--muted); font-size: .8rem; }
+.warning-toolbar .button { min-height: 38px; padding: 7px 10px; font-size: .78rem; }
+.warning-select { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 9px; color: var(--muted); font-size: .78rem; }
 .settings-form { display: grid; gap: 16px; max-width: 600px; }
 .source-filter { margin-bottom: 14px; }
 .source-filter summary { cursor: pointer; font-weight: 750; }
