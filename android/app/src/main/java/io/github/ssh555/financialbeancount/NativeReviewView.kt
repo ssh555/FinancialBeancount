@@ -89,7 +89,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
         list.removeAllViews()
         selectedWarnings.clear()
         warningChecks.clear()
-        if (rows.length() == 0) { list.addView(message("这一类没有待审核项")); return }
+        if (rows.length() == 0) { list.addView(message("这一类没有待审核项")); NativeUi.styleTree(list); return }
         if (type == "warnings" || type == "acknowledged") {
             list.addView(LinearLayout(context).apply {
                 orientation = HORIZONTAL
@@ -141,6 +141,7 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
                 })
             })
         }
+        NativeUi.styleTree(list)
     }
 
     private fun showDetail(type: String, item: JSONObject, endpoint: String) {

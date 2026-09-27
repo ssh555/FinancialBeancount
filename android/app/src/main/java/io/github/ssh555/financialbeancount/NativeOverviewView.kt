@@ -5,7 +5,6 @@ import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -28,22 +27,29 @@ class NativeOverviewView(
 
     init {
         orientation = VERTICAL
+        setBackgroundColor(NativeUi.paper)
         setPadding(dp(16), dp(16), dp(16), dp(24))
         addView(title("财务概览", 26f))
         addView(sourceFilter)
-        addView(periodChooser(listOf("今日" to "day", "本周" to "week", "本月" to "month", "本年" to "year", "全部" to "all")) { selected ->
+        addView(periodChooser(listOf("今日" to "day", "本周" to "week", "本月" to "month", "本年" to "year", "全部" to "all"), range) { selected ->
             range = selected
             refresh()
         })
         accountBalance.setPadding(0, dp(16), 0, dp(8))
         accountBalance.textSize = 19f
         accountBalance.setTypeface(accountBalance.typeface, Typeface.BOLD)
+        accountBalance.setTextColor(android.graphics.Color.WHITE)
+        accountBalance.tag = "featured"
+        accountBalance.setPadding(dp(16), dp(16), dp(16), dp(16))
+        accountBalance.background = NativeUi.rounded(context, NativeUi.green, 18, NativeUi.green)
         addView(accountBalance)
         summary.setPadding(0, dp(16), 0, dp(16))
         summary.textSize = 17f
+        NativeUi.card(summary)
+        summary.setPadding(dp(16), dp(16), dp(16), dp(16))
         addView(summary)
         addView(title("周期收支", 18f))
-        addView(periodChooser(listOf("日" to "day", "周" to "week", "月" to "month", "年" to "year")) { selected ->
+        addView(periodChooser(listOf("日" to "day", "周" to "week", "月" to "month", "年" to "year"), grouping) { selected ->
             grouping = selected
             refresh()
         })
@@ -60,7 +66,10 @@ class NativeOverviewView(
         client.request("GET", "/api/v1/statistics/account-balances") { result ->
             result.onSuccess { response ->
                 val data = response.getJSONObject("body").getJSONObject("data")
-                accountBalance.text = "账户余额 ${money(data.getString("known_balance"))}\n截至 ${data.optString("as_of", "暂无日期")} · 不随来源筛选"
+                val asOf = data.optString("as_of")
+                    .takeUnless { it.isBlank() || it == "null" }
+                    ?: "暂无日期"
+                accountBalance.text = "账户余额 ${money(data.getString("known_balance"))}\n截至 $asOf · 不随来源筛选"
             }.onFailure { accountBalance.text = it.message ?: "账户余额加载失败" }
         }
         client.request("GET", "/api/v1/statistics/summary?$query") { result ->
@@ -89,19 +98,28 @@ class NativeOverviewView(
         }
     }
 
-    private fun periodChooser(items: List<Pair<String, String>>, select: (String) -> Unit): View =
-        HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                items.forEach { (label, value) ->
-                    addView(Button(context).apply {
-                        text = label
-                        minHeight = dp(48)
-                        setOnClickListener { select(value) }
-                    })
+    private fun periodChooser(items: List<Pair<String, String>>, selectedValue: String, select: (String) -> Unit): View =
+        LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            background = NativeUi.rounded(context, android.graphics.Color.rgb(229, 230, 224), 12, android.graphics.Color.rgb(229, 230, 224))
+            val buttons = mutableListOf<Pair<Button, String>>()
+            items.forEach { (label, value) ->
+                val button = Button(context).apply {
+                    text = label
+                    minWidth = 0
+                    minHeight = dp(48)
+                    NativeUi.styleButton(this, primary = value == selectedValue)
+                    setOnClickListener {
+                        buttons.forEach { (candidate, candidateValue) ->
+                            NativeUi.styleButton(candidate, primary = candidateValue == value)
+                        }
+                        select(value)
+                    }
                 }
-            })
+                buttons += button to value
+                addView(button, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+            }
         }
 
     private fun rangeQuery(): String {

@@ -30,12 +30,11 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
     init {
         orientation = VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(24))
+        addView(TextView(context).apply { text = "交易"; textSize = 26f; setTypeface(typeface, Typeface.BOLD) })
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(TextView(context).apply { text = "交易"; textSize = 26f; setTypeface(typeface, Typeface.BOLD) }, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-            addView(Button(context).apply { text = "回收站"; setOnClickListener { showTrash() } })
-            addView(Button(context).apply { text = "记一笔"; setOnClickListener { showEditor(null) } })
+            addView(Button(context).apply { text = "回收站"; setOnClickListener { showTrash() } }, LayoutParams(0, dp(48), 1f))
+            addView(Button(context).apply { text = "记一笔"; NativeUi.styleButton(this, primary = true); setOnClickListener { showEditor(null) } }, LayoutParams(0, dp(48), 1f))
         })
         addView(sourceFilter)
         addView(LinearLayout(context).apply {
@@ -83,6 +82,7 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
                 loaded += rows.length()
                 more.visibility = if (loaded < total) View.VISIBLE else View.GONE
                 more.isEnabled = true
+                NativeUi.styleTree(list)
             }.onFailure { if (reset) list.addView(message(it.message ?: "交易加载失败")); more.isEnabled = true }
         }
     }

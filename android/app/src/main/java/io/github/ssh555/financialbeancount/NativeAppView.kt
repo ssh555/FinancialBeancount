@@ -29,17 +29,23 @@ class NativeAppView(
 
     init {
         orientation = VERTICAL
+        setBackgroundColor(NativeUi.paper)
         content.addView(containerFor("概览"))
         addView(content, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
 
         navigation.orientation = HORIZONTAL
         navigation.gravity = Gravity.CENTER
         navigation.setPadding(dp(4), dp(4), dp(4), dp(4))
+        navigation.setBackgroundColor(NativeUi.card)
+        navigation.elevation = dp(10).toFloat()
         pageFactories.forEach { (label, _) ->
             navigation.addView(Button(context).apply {
-                text = label
+                text = "${mapOf("概览" to "⌂", "交易" to "≡", "审核" to "✓", "数据" to "⇄").getValue(label)}\n$label"
                 isAllCaps = false
                 minHeight = dp(56)
+                backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
+                setTextColor(NativeUi.muted)
+                stateListAnimator = null
                 setOnClickListener { showPage(label, this) }
             }, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         }
@@ -57,10 +63,12 @@ class NativeAppView(
             is NativeTransactionsView -> page.reload()
             is NativeReviewView -> page.reload()
         }
+        NativeUi.styleTree(page)
     }
 
     private fun containerFor(label: String): ScrollView = pageContainers.getOrPut(label) {
         val page = pages.getOrPut(label) { pageFactories.getValue(label).invoke() }
+        NativeUi.styleTree(page)
         pageContainer(page)
     }
 
@@ -74,6 +82,7 @@ class NativeAppView(
             (navigation.getChildAt(position) as Button).apply {
                 isSelected = position == index
                 alpha = if (isSelected) 1f else 0.65f
+                setTextColor(if (isSelected) NativeUi.green else NativeUi.muted)
                 setTypeface(typeface, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
             }
         }

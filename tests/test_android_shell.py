@@ -41,6 +41,30 @@ def test_android_shell_reuses_core_and_limits_network_to_updates() -> None:
     assert "canRequestPackageInstalls" in updater
 
 
+def test_android_overview_handles_empty_balance_date_and_fits_period_controls() -> None:
+    overview = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeOverviewView.kt"
+    ).read_text(encoding="utf-8")
+
+    assert 'it.isBlank() || it == "null"' in overview
+    assert '?: "暂无日期"' in overview
+    assert "minWidth = 0" in overview
+    assert "LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)" in overview
+    assert "NativeUi.rounded(context, NativeUi.green" in overview
+
+
+def test_android_native_ui_reuses_the_web_default_palette() -> None:
+    native_ui = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeUi.kt"
+    ).read_text(encoding="utf-8")
+    web_ui = (ROOT / "beancount_dedup/webapp/styles.css").read_text(encoding="utf-8")
+
+    for color in ("23, 34, 29", "243, 242, 236", "255, 254, 250", "35, 92, 70"):
+        assert color in native_ui
+    for color in ("#17221d", "#f3f2ec", "#fffefa", "#235c46"):
+        assert color in web_ui
+
+
 def test_android_launches_native_mobile_navigation() -> None:
     activity = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/MainActivity.kt"
