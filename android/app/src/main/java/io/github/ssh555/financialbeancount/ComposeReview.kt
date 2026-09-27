@@ -166,7 +166,7 @@ private fun ReviewCard(type: String, item: JSONObject, modifier: Modifier, open:
 @Composable
 private fun ReviewEmpty(label: String) {
     Card(colors = CardDefaults.cardColors(containerColor = LedgerColors.Card), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("$label暂无待处理项", fontWeight = FontWeight.SemiBold); Text("可切换上方分类继续检查。", color = LedgerColors.Muted, modifier = Modifier.padding(top = 6.dp)) }
+        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("${label}暂无待处理项", fontWeight = FontWeight.SemiBold); Text("可切换上方分类继续检查。", color = LedgerColors.Muted, modifier = Modifier.padding(top = 6.dp)) }
     }
 }
 
