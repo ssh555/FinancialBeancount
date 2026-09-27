@@ -27,6 +27,8 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert "Intent.ACTION_CREATE_DOCUMENT" in activity
     assert "contentResolver.openOutputStream" in activity
     assert "fun saveDocument(" in activity
+    assert "fun pickPortableArchive()" in activity
+    assert 'bridge.callAttr(' in activity and '"restore_archive"' in activity
     assert "androidx.documentfile:documentfile" in build
 
 
@@ -43,6 +45,8 @@ def test_web_client_uses_native_bridge_before_http_fetch() -> None:
     assert "saveWithNativePicker" in script
     assert "reportNativeExportResult" in script
     assert "textAsBase64" in script
+    assert "reportNativeArchiveImportResult" in script
+    assert "恢复完整归档会覆盖此设备当前账本" in script
 
 
 def test_android_debug_workflow_is_manual_and_uploads_only_debug_apk() -> None:

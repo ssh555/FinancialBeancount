@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import base64
+import binascii
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from .ledger_store import LedgerStore
 from .mobile_api import MobileLedgerApi, load_web_asset
+from .portable_archive import import_portable_archive, inspect_portable_archive
 
 
 def dispatch(database_path: str, request_json: str) -> str:
@@ -19,12 +24,44 @@ def dispatch(database_path: str, request_json: str) -> str:
     if body is not None and not isinstance(body, dict):
         raise TypeError("body must be an object or null")
     store = LedgerStore(_private_database_path(database_path))
-    response = MobileLedgerApi(store).dispatch(method, target, body)
+    try:
+        response = MobileLedgerApi(store).dispatch(method, target, body)
+    finally:
+        store.close()
     return json.dumps(
         {"status": response.status, "body": response.body},
         ensure_ascii=False,
         separators=(",", ":"),
     )
+
+
+def restore_archive(database_path: str, content_base64: str) -> str:
+    """Validate and atomically replace the app-private ledger with a portable archive."""
+    destination = _private_database_path(database_path)
+    try:
+        content = base64.b64decode(content_base64, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("portable archive content is not valid base64") from exc
+    if len(content) > 200 * 1024 * 1024:
+        raise ValueError("portable archive exceeds the 200 MiB limit")
+
+    descriptor, staged_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".restore", dir=destination.parent
+    )
+    os.close(descriptor)
+    staged = Path(staged_name)
+    staged.unlink()
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "ledger.financial-beancount.zip"
+            archive.write_bytes(content)
+            manifest = inspect_portable_archive(archive)
+            restored = import_portable_archive(archive, staged)
+            restored.close()
+        staged.replace(destination)
+        return json.dumps(manifest.to_dict(), ensure_ascii=False, separators=(",", ":"))
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 def web_asset(asset_path: str) -> bytes:

@@ -2,6 +2,8 @@
 
 [简体中文](ANDROID.zh-CN.md) | [English](ANDROID.md)
 
+实际设备验证步骤见 [Android 真机验收](ANDROID_ACCEPTANCE.zh-CN.md)；对应英文版为 [Android Device Acceptance](ANDROID_ACCEPTANCE.md)。
+
 Android 版本必须继续使用统一账本 Schema、导入适配器、审核规则和便携归档，不另建移动端数据库或复制业务逻辑。
 
 ## 已确定边界
@@ -18,4 +20,4 @@ Android 版本必须继续使用统一账本 Schema、导入适配器、审核�
 
 本阶段已经提供最小 Kotlin/Gradle 工程、无网络桥接、仅允许应用内域名的 WebView 和静态资源白名单，并验证健康检查、统一 Schema 初始化、移动端新增/查询交易及路径拒绝。Android 调试应用可通过系统文件选择器选择单个文件、多个文件或文件夹；选择结果复用网页端批量导入队列，不支持、过大或读取失败的文件会按文件名提示。交易 CSV/JSON 和完整便携归档也可通过系统“创建文档”界面保存到用户选择的位置，全程不申请广泛存储权限。手动 GitHub Actions 只生成调试 APK，不发布也不签署正式版本。
 
-Android APK/AAB 尚未形成可发布产物；不得把当前桥接测试描述为完整 Android 应用或发布就绪。
+Android APK/AAB 尚未形成可发布产物；不得把当前调试 APK 描述为正式发布就绪。

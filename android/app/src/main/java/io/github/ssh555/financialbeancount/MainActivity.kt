@@ -24,6 +24,7 @@ import kotlin.concurrent.thread
 
 private const val APP_ORIGIN = "https://appassets.androidplatform.net"
 private const val MAX_IMPORT_BYTES = 50L * 1024 * 1024
+private const val MAX_ARCHIVE_BYTES = 200L * 1024 * 1024
 private val IMPORT_SUFFIXES = setOf("csv", "xlsx", "pdf")
 
 private data class SelectedDocument(val document: DocumentFile, val relativePath: String)
@@ -42,6 +43,9 @@ class MainActivity : ComponentActivity() {
     }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) importSelectedFolder(uri)
+    }
+    private val archivePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) restorePortableArchive(uri)
     }
     private val exportPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val export = pendingExport
@@ -98,6 +102,11 @@ class MainActivity : ComponentActivity() {
         fun pickFolder() = runOnUiThread { folderPicker.launch(null) }
 
         @JavascriptInterface
+        fun pickPortableArchive() = runOnUiThread {
+            archivePicker.launch(arrayOf("application/zip", "application/octet-stream"))
+        }
+
+        @JavascriptInterface
         @Synchronized
         fun saveDocument(filename: String, mimeType: String, contentBase64: String): Boolean {
             if (pendingExport != null) return false
@@ -132,6 +141,34 @@ class MainActivity : ComponentActivity() {
             } finally {
                 pendingExport = null
             }
+        }
+    }
+
+    private fun restorePortableArchive(uri: Uri) {
+        thread(name = "ledger-archive-restorer") {
+            try {
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: error("无法打开完整归档")
+                if (bytes.size > MAX_ARCHIVE_BYTES) error("完整归档超过 200 MiB")
+                val database = getDatabasePath("ledger.sqlite3").absolutePath
+                bridge.callAttr(
+                    "restore_archive",
+                    database,
+                    Base64.encodeToString(bytes, Base64.NO_WRAP),
+                )
+                reportArchiveImportResult(true, "完整账本已恢复")
+            } catch (error: Exception) {
+                reportArchiveImportResult(false, error.message ?: "完整归档恢复失败")
+            }
+        }
+    }
+
+    private fun reportArchiveImportResult(success: Boolean, message: String) {
+        webView.post {
+            webView.evaluateJavascript(
+                "globalThis.reportNativeArchiveImportResult($success, ${JSONObject.quote(message)})",
+                null,
+            )
         }
     }
 

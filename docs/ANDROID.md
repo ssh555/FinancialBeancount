@@ -2,6 +2,9 @@
 
 [English](ANDROID.md) | [简体中文](ANDROID.zh-CN.md)
 
+See [Android Device Acceptance](ANDROID_ACCEPTANCE.md) for on-device verification and
+[Android 真机验收](ANDROID_ACCEPTANCE.zh-CN.md) for its Chinese counterpart.
+
 Android must continue to use the unified ledger schema, import adapters, review rules and portable
 archive. It must not introduce a mobile-only database or duplicate business logic.
 
@@ -31,5 +34,5 @@ files are reported by name. Transaction CSV/JSON and the complete portable archi
 through the system create-document UI without broad storage permission. A manual GitHub Actions job
 produces a debug APK only; it neither publishes nor signs a formal build.
 
-No publishable Android APK/AAB exists yet. These bridge tests must not be represented as a complete
-Android application or release-ready artifact.
+No publishable Android APK/AAB exists yet. The current debug APK must not be represented as a formal
+release-ready artifact.

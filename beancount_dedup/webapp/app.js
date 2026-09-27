@@ -249,6 +249,7 @@ function loadSettings() {
   $("#api-base").value = apiBase();
   $("#api-token").value = sessionStorage.getItem("financial-beancount-token") || "";
   $("#review-actor").value = actor();
+  $("#archive-import-button").classList.toggle("hidden", !globalThis.FinancialBeancountNative?.pickPortableArchive);
 }
 
 function showCreateForm() {
@@ -416,6 +417,20 @@ function saveWithNativePicker(filename, mime, contentBase64) {
 
 globalThis.reportNativeExportResult = (success, message) => toast(message || (success ? "文件已保存" : "保存失败"));
 
+globalThis.reportNativeArchiveImportResult = async (success, message) => {
+  toast(message || (success ? "完整账本已恢复" : "完整归档恢复失败"));
+  if (success) {
+    state.transactionPage = 1; state.transactions = [];
+    await loadOverview();
+  }
+};
+
+function restorePortableArchive() {
+  if (!globalThis.FinancialBeancountNative?.pickPortableArchive) return;
+  if (!confirm("恢复完整归档会覆盖此设备当前账本。请先导出备份，是否继续？")) return;
+  globalThis.FinancialBeancountNative.pickPortableArchive();
+}
+
 async function exportPortableArchive() {
   const button = $("#archive-export-button"); button.disabled = true;
   try {
@@ -490,6 +505,7 @@ $("#export-json-button").addEventListener("click", () => exportTransactions("jso
 $("#export-csv-button").addEventListener("click", () => exportTransactions("csv"));
 $("#trash-button").addEventListener("click", showTrash);
 $("#archive-export-button").addEventListener("click", exportPortableArchive);
+$("#archive-import-button").addEventListener("click", restorePortableArchive);
 $("#import-history-button").addEventListener("click", showImportHistory);
 $("#load-more").addEventListener("click", () => { state.transactionPage += 1; loadTransactions(false); });
 $("#apply-dates").addEventListener("click", loadOverview);

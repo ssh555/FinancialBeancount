@@ -1,8 +1,16 @@
 import json
+import base64
 from pathlib import Path
 
 import pytest
-from beancount_dedup.android_bridge import dispatch, web_asset, web_asset_content_type
+from beancount_dedup.android_bridge import (
+    dispatch,
+    restore_archive,
+    web_asset,
+    web_asset_content_type,
+)
+from beancount_dedup.ledger_store import LedgerStore
+from beancount_dedup.portable_archive import export_portable_archive
 
 
 def _call(database: Path, method: str, target: str, body=None) -> dict:
@@ -58,3 +66,43 @@ def test_android_web_assets_are_allowlisted() -> None:
     assert web_asset_content_type("/app.js").startswith("text/javascript")
     with pytest.raises(ValueError, match="allowlisted"):
         web_asset("/../../ledger.sqlite3")
+
+
+def test_android_bridge_restores_complete_archive_atomically(tmp_path: Path) -> None:
+    source_database = tmp_path / "source.sqlite3"
+    _call(
+        source_database,
+        "POST",
+        "/api/v1/transactions",
+        {
+            "booking_date": "2026-09-27",
+            "amount": "-88.00",
+            "direction": "expense",
+            "merchant": "完整账本迁移",
+            "tx_type": "expense",
+            "actor": "acceptance",
+        },
+    )
+    archive = tmp_path / "complete-ledger.financial-beancount.zip"
+    source = LedgerStore(source_database)
+    export_portable_archive(source, archive)
+    source.close()
+
+    destination = tmp_path / "android-private" / "ledger.sqlite3"
+    _call(destination, "GET", "/api/v1/health")
+    manifest = json.loads(
+        restore_archive(str(destination.resolve()), base64.b64encode(archive.read_bytes()).decode())
+    )
+
+    assert manifest["format"] == "financial-beancount-portable"
+    listed = _call(destination, "GET", "/api/v1/transactions?page=1&page_size=20")
+    assert listed["body"]["data"][0]["merchant"] == "完整账本迁移"
+
+
+def test_android_bridge_rejects_invalid_archive_without_replacing_ledger(tmp_path: Path) -> None:
+    destination = tmp_path / "ledger.sqlite3"
+    _call(destination, "GET", "/api/v1/health")
+    before = destination.read_bytes()
+    with pytest.raises(ValueError, match="archive"):
+        restore_archive(str(destination.resolve()), base64.b64encode(b"not-a-zip").decode())
+    assert destination.read_bytes() == before
