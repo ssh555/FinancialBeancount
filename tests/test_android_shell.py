@@ -111,3 +111,20 @@ def test_native_android_review_covers_all_queues_and_decisions() -> None:
     assert 'builder.setPositiveButton("人工修改")' in source
     assert 'if (type == "imports") "modify" else "confirm"' in source
     assert 'put("changes", changes)' in source
+
+
+def test_native_android_data_surface_keeps_platform_file_boundaries() -> None:
+    source = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeDataView.kt"
+    ).read_text(encoding="utf-8")
+    for operation in (
+        "pickOneStatement",
+        "pickMultipleStatements",
+        "pickStatementFolder",
+        "restorePortableArchive",
+        "exportTransactions",
+        "exportPortableArchive",
+    ):
+        assert f"fun {operation}" in source
+    assert "data class QueueItem" in source
+    assert 'setTitle("覆盖当前账本？")' in source
