@@ -66,6 +66,7 @@ fun ComposeTransactions(client: NativeLedgerClient, modifier: Modifier = Modifie
     var query by remember { mutableStateOf("") }
     var selectedSources by remember { mutableStateOf(emptySet<String>()) }
     var sourceOptions by remember { mutableStateOf(emptyList<SourceOption>()) }
+    var sourcesInitialized by remember { mutableStateOf(false) }
     var showSources by remember { mutableStateOf(false) }
     var rows by remember { mutableStateOf(emptyList<TransactionRow>()) }
     var page by remember { mutableIntStateOf(1) }
@@ -92,7 +93,13 @@ fun ComposeTransactions(client: NativeLedgerClient, modifier: Modifier = Modifie
     LaunchedEffect(page, query, selectedSources, reloadToken) {
         loading = true
         error = null
-        val sourceQuery = selectedSources.joinToString("&") { "source=${URLEncoder.encode(it, "UTF-8")}" }
+        val allSourceValues = sourceOptions.mapTo(mutableSetOf()) { it.value }
+        val effectiveSources = when {
+            !sourcesInitialized || selectedSources == allSourceValues -> emptySet()
+            selectedSources.isEmpty() -> setOf("__no_source_selected__")
+            else -> selectedSources
+        }
+        val sourceQuery = effectiveSources.joinToString("&") { "source=${URLEncoder.encode(it, "UTF-8")}" }
         val suffix = if (sourceQuery.isBlank()) "" else "&$sourceQuery"
         client.request("GET", "/api/v1/transactions?page=$page&page_size=30&search=${URLEncoder.encode(query, "UTF-8")}$suffix") { result ->
             loading = false
@@ -150,10 +157,17 @@ fun ComposeTransactions(client: NativeLedgerClient, modifier: Modifier = Modifie
                             options += SourceOption("${item.getString("source_account")} · ${item.optInt("transaction_count")} 笔", "$source::${item.getString("source_account")}")
                         }
                         sourceOptions = options
+                        if (!sourcesInitialized) {
+                            selectedSources = options.mapTo(mutableSetOf()) { it.value }
+                            sourcesInitialized = true
+                        }
                         showSources = true
                     }.onFailure { error = it.message ?: "来源加载失败" }
                 }
-            }) { Text(if (selectedSources.isEmpty()) "来源：全部" else "来源：已选 ${selectedSources.size} 项") }
+            }) {
+                val allSelected = sourcesInitialized && selectedSources.size == sourceOptions.size
+                Text(if (!sourcesInitialized || allSelected) "来源：全部" else "来源：已选 ${selectedSources.size}/${sourceOptions.size} 项")
+            }
         }
         if (loading && rows.isEmpty()) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() } }
         error?.let { message -> item { Text(message, color = androidx.compose.material3.MaterialTheme.colorScheme.error) } }
@@ -205,7 +219,7 @@ private fun SourceDialog(options: List<SourceOption>, selected: Set<String>, dis
         title = { Text("选择来源") },
         text = { LazyColumn(Modifier.heightIn(max = 420.dp)) { items(options) { item -> Row(Modifier.fillMaxWidth().clickable { draft = if (item.value in draft) draft - item.value else draft + item.value }, verticalAlignment = Alignment.CenterVertically) { Checkbox(item.value in draft, { checked -> draft = if (checked) draft + item.value else draft - item.value }); Text(item.label) } } } },
         confirmButton = { TextButton(onClick = { apply(draft) }) { Text("应用") } },
-        dismissButton = { Row { TextButton(onClick = { apply(emptySet()) }) { Text("清除") }; TextButton(onClick = dismiss) { Text("取消") } } },
+        dismissButton = { Row { TextButton(onClick = { draft = options.mapTo(mutableSetOf()) { it.value } }) { Text("全选") }; TextButton(onClick = dismiss) { Text("取消") } } },
     )
 }
 

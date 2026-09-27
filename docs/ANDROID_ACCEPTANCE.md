@@ -99,6 +99,24 @@ python -m beancount_dedup.archive_cli import \
    Unsupported extensions, oversized files, unsupported content and damaged statements must be
    reported by filename as not queued or unprocessed, without partial ledger writes.
 
+## Overview and transaction filtering
+
+- Summary metrics and every timeline card on Overview open the matching transaction result set.
+  The destination preserves the applicable date range, sources and other filters, and Back returns
+  to the previous Overview position.
+- Overview supports multi-select filtering by platform, bank and individual account so users can
+  inspect one source or a combination of sources. Account balance remains explicitly independent
+  of source filters.
+- “All sources” uses explicit select-all semantics: every source is selected by default, deselecting
+  one excludes it, and selecting none yields an empty result rather than being interpreted as all.
+- Transactions treats source as the top-level scope and also supports combined filters for date or
+  custom period, income/expense direction, amount range, category, merchant or notes, and pending
+  review status.
+- Active filters stay visible and support individual removal and clear-all. An empty filtered result
+  must be distinguished from an empty ledger.
+- Filtering, pagination, opening details and navigating back preserve list position and active
+  conditions.
+
 ## Review priority and actions
 
 Process **Required** items first, then inspect non-blocking Warnings. The complete outcome set for a

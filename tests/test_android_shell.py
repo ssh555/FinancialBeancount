@@ -181,6 +181,9 @@ def test_android_compose_transactions_cover_search_crud_sources_and_trash() -> N
     assert "ComposeTransactions(client" in app
     assert 'page_size=30&search=' in transactions
     assert '"GET", "/api/v1/sources"' in transactions
+    assert 'selectedSources = options.mapTo(mutableSetOf()) { it.value }' in transactions
+    assert 'selectedSources.isEmpty() -> setOf("__no_source_selected__")' in transactions
+    assert 'Text("全选")' in transactions
     assert 'mutate("POST", "/api/v1/transactions"' in transactions
     assert 'mutate("PATCH", "/api/v1/transactions/${item.id}"' in transactions
     assert 'mutate("DELETE", "/api/v1/transactions/${item.id}"' in transactions
@@ -188,6 +191,20 @@ def test_android_compose_transactions_cover_search_crud_sources_and_trash() -> N
     assert '}/restore"' in transactions
     for component in ("LazyColumn", "OutlinedTextField", "AlertDialog", "FilterChip"):
         assert component in transactions
+
+
+def test_android_compose_review_covers_queues_and_warning_batches() -> None:
+    app = (ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeApp.kt").read_text(encoding="utf-8")
+    review = (ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeReview.kt").read_text(encoding="utf-8")
+    assert "ComposeReview(client" in app
+    for queue in ("imports", "matches", "refunds", "classifications", "warnings", "acknowledged"):
+        assert f'"{queue}"' in review
+    assert "/api/v1/import-reviews/" in review
+    assert "/api/v1/review/refunds/warnings/batch" in review
+    for decision in ("acknowledge", "escalate", "restore"):
+        assert f'resolveWarnings("{decision}")' in review
+    for component in ("LazyColumn", "LazyRow", "FilterChip", "AlertDialog"):
+        assert component in review
 
 
 def test_native_android_overview_uses_async_core_client() -> None:
