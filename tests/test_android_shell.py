@@ -19,6 +19,7 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert 'srcDir(layout.buildDirectory.dir("generated/python"))' in build
     assert 'from(rootProject.projectDir.parentFile.resolve("beancount_dedup"))' in build
     assert 'endsWith("PythonSources")' in build
+    assert "sourceCompatibility = JavaVersion.VERSION_17" in build
 
 
 def test_web_client_uses_native_bridge_before_http_fetch() -> None:
