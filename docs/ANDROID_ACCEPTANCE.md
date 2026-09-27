@@ -51,6 +51,18 @@ Zhaochaobao and ICBC Tiantianying). External fund platforms such as Tiantian Fun
 accounts without statement balances are excluded. During acceptance, also inspect
 `cash_accounts`, `internal_products`, and their as-of dates.
 
+Generate the read-only data-quality audit as well. It flags suspected duplicates, merge candidates,
+and investment/fund flows without modifying the ledger:
+
+```bash
+python scripts/audit_complete_ledger.py \
+  --database /path/to/complete-ledger.sqlite3 \
+  --output /path/to/complete-ledger-data-quality.json
+```
+
+A `high` priority still means review first, not automatic deletion. Equal amounts and balances can
+also be legitimate consecutive entries caused by an internal-product automatic redemption.
+
 Then run the primary mobile read-path baseline. Do not proceed to device acceptance if any item
 exceeds its reported limit:
 

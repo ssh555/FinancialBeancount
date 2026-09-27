@@ -41,6 +41,16 @@ python scripts/validate_complete_ledger.py \
 （目前为招商银行朝朝宝、工商银行天天盈）。外部天天基金等基金平台，以及无法从账单取得余额的支付账户，
 不计入该数值。验收时应同时核对 `cash_accounts`、`internal_products` 和各自的截至日期。
 
+再生成只读数据质量审计报告。该步骤只标记疑似重复、归并候选与基金/理财流向，不会自动修改账本：
+
+```bash
+python scripts/audit_complete_ledger.py \
+  --database /path/to/complete-ledger.sqlite3 \
+  --output /path/to/complete-ledger-data-quality.json
+```
+
+`high` 只表示优先人工核对，不表示可以自动删除；相同金额与余额也可能来自朝朝宝自动赎回后的真实连续交易。
+
 再运行移动端主要读取路径的性能基线；任一项目超过报告中的阈值时，不进入真机验收：
 
 ```bash
