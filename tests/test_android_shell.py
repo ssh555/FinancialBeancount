@@ -24,6 +24,9 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert "ActivityResultContracts.OpenMultipleDocuments()" in activity
     assert "ActivityResultContracts.OpenDocumentTree()" in activity
     assert "DocumentFile.fromTreeUri" in activity
+    assert "Intent.ACTION_CREATE_DOCUMENT" in activity
+    assert "contentResolver.openOutputStream" in activity
+    assert "fun saveDocument(" in activity
     assert "androidx.documentfile:documentfile" in build
 
 
@@ -37,6 +40,9 @@ def test_web_client_uses_native_bridge_before_http_fetch() -> None:
     assert "acceptNativeImportFiles" in script
     assert "file.nativeBase64" in script
     assert 'single: "pickSingleFile"' in script
+    assert "saveWithNativePicker" in script
+    assert "reportNativeExportResult" in script
+    assert "textAsBase64" in script
 
 
 def test_android_debug_workflow_is_manual_and_uploads_only_debug_apk() -> None:

@@ -27,8 +27,9 @@ This increment provides the minimal Kotlin/Gradle project, socket-free bridge, l
 WebView and asset allowlist, with tests for health, unified-schema initialization, mobile transaction
 creation/listing and path rejection. The Android debug app now uses the system picker for one file,
 multiple files or a folder and reuses the web batch-import queue; unsupported, oversized or unreadable
-files are reported by name. A manual GitHub Actions job produces a debug APK only; it neither publishes
-nor signs a formal build. The next increment is the system export bridge.
+files are reported by name. Transaction CSV/JSON and the complete portable archive can also be saved
+through the system create-document UI without broad storage permission. A manual GitHub Actions job
+produces a debug APK only; it neither publishes nor signs a formal build.
 
 No publishable Android APK/AAB exists yet. These bridge tests must not be represented as a complete
 Android application or release-ready artifact.

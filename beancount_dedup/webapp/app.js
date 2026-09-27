@@ -398,10 +398,29 @@ function base64AsBlob(encoded, mime) {
   return new Blob(chunks, { type: mime });
 }
 
+function textAsBase64(content) {
+  const bytes = new TextEncoder().encode(content); let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 32768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+  }
+  return btoa(binary);
+}
+
+function saveWithNativePicker(filename, mime, contentBase64) {
+  if (!globalThis.FinancialBeancountNative?.saveDocument) return false;
+  const accepted = globalThis.FinancialBeancountNative.saveDocument(filename, mime, contentBase64);
+  if (!accepted) throw new Error("已有文件正在等待保存");
+  toast("请选择保存位置");
+  return true;
+}
+
+globalThis.reportNativeExportResult = (success, message) => toast(message || (success ? "文件已保存" : "保存失败"));
+
 async function exportPortableArchive() {
   const button = $("#archive-export-button"); button.disabled = true;
   try {
     const { data } = await request("/api/v1/exports/portable-archive");
+    if (saveWithNativePicker(data.filename, "application/zip", data.content_base64)) return;
     const url = URL.createObjectURL(base64AsBlob(data.content_base64, "application/zip"));
     const link = document.createElement("a"); link.href = url; link.download = data.filename; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000); toast("完整便携归档已生成");
@@ -425,8 +444,10 @@ async function exportTransactions(format) {
       const quote = value => `"${text(value).replaceAll('"', '""')}"`;
       content = "\ufeff" + [columns.join(","), ...payload.data.map(row => columns.map(column => quote(row[column])).join(","))].join("\r\n"); mime = "text/csv;charset=utf-8";
     } else { content = JSON.stringify({ exported_at: new Date().toISOString(), ...payload }, null, 2); mime = "application/json"; }
+    const filename = `financial-beancount-${new Date().toISOString().slice(0, 10)}.${format}`;
+    if (saveWithNativePicker(filename, mime, textAsBase64(content))) return;
     const blob = new Blob([content], { type: mime });
-    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `financial-beancount-${new Date().toISOString().slice(0, 10)}.${format}`; link.click();
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = filename; link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000); toast(`已导出 ${payload.meta.total} 笔唯一交易`);
   } catch (error) { toast(error.message); }
 }

@@ -1,6 +1,7 @@
 package io.github.ssh555.financialbeancount
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
@@ -26,10 +27,12 @@ private const val MAX_IMPORT_BYTES = 50L * 1024 * 1024
 private val IMPORT_SUFFIXES = setOf("csv", "xlsx", "pdf")
 
 private data class SelectedDocument(val document: DocumentFile, val relativePath: String)
+private data class PendingExport(val filename: String, val mimeType: String, val contentBase64: String)
 
 class MainActivity : ComponentActivity() {
     private lateinit var bridge: PyObject
     private lateinit var webView: WebView
+    @Volatile private var pendingExport: PendingExport? = null
 
     private val singleFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         importSelectedUris(listOfNotNull(uri))
@@ -39,6 +42,16 @@ class MainActivity : ComponentActivity() {
     }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) importSelectedFolder(uri)
+    }
+    private val exportPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val export = pendingExport
+        val uri = result.data?.data
+        if (result.resultCode != RESULT_OK || uri == null || export == null) {
+            pendingExport = null
+            reportExportResult(false, "已取消保存")
+        } else {
+            writeExport(uri, export)
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
@@ -83,6 +96,52 @@ class MainActivity : ComponentActivity() {
 
         @JavascriptInterface
         fun pickFolder() = runOnUiThread { folderPicker.launch(null) }
+
+        @JavascriptInterface
+        @Synchronized
+        fun saveDocument(filename: String, mimeType: String, contentBase64: String): Boolean {
+            if (pendingExport != null) return false
+            pendingExport = PendingExport(filename, mimeType, contentBase64)
+            runOnUiThread {
+                try {
+                    exportPicker.launch(
+                        Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = mimeType
+                            putExtra(Intent.EXTRA_TITLE, filename)
+                        },
+                    )
+                } catch (error: Exception) {
+                    pendingExport = null
+                    reportExportResult(false, error.message ?: "无法打开保存界面")
+                }
+            }
+            return true
+        }
+    }
+
+    private fun writeExport(uri: Uri, export: PendingExport) {
+        thread(name = "ledger-export-writer") {
+            try {
+                val bytes = Base64.decode(export.contentBase64, Base64.DEFAULT)
+                contentResolver.openOutputStream(uri, "w")?.use { it.write(bytes) }
+                    ?: error("无法写入目标文件")
+                reportExportResult(true, "已保存 ${export.filename}")
+            } catch (error: Exception) {
+                reportExportResult(false, error.message ?: "保存失败")
+            } finally {
+                pendingExport = null
+            }
+        }
+    }
+
+    private fun reportExportResult(success: Boolean, message: String) {
+        webView.post {
+            webView.evaluateJavascript(
+                "globalThis.reportNativeExportResult($success, ${JSONObject.quote(message)})",
+                null,
+            )
+        }
     }
 
     private fun importSelectedUris(uris: List<Uri>) {
