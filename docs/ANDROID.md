@@ -23,10 +23,11 @@ archive. It must not introduce a mobile-only database or duplicate business logi
 
 ## Current increment
 
-This increment provides the socket-free bridge and web-asset allowlist, with tests for health,
-unified-schema initialization, mobile transaction creation/listing and path rejection. The next
-increment is the Kotlin/Gradle project, WebView request handler, Storage Access Framework batch picker
-and Android instrumentation tests.
+This increment provides the minimal Kotlin/Gradle project, socket-free bridge, local-origin-only
+WebView and asset allowlist, with tests for health, unified-schema initialization, mobile transaction
+creation/listing and path rejection. A manual GitHub Actions job produces a debug APK only; it neither
+publishes nor signs a formal build. The next increment is the Storage Access Framework batch picker
+and export bridge.
 
 No publishable Android APK/AAB exists yet. These bridge tests must not be represented as a complete
 Android application or release-ready artifact.

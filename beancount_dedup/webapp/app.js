@@ -21,6 +21,18 @@ function apiBase() { return sessionStorage.getItem("financial-beancount-api") ||
 function actor() { return localStorage.getItem("financial-beancount-actor") || "local-user"; }
 
 async function request(path, options = {}) {
+  if (globalThis.FinancialBeancountNative?.request) {
+    const nativeResponse = JSON.parse(globalThis.FinancialBeancountNative.request(JSON.stringify({
+      method: options.method || "GET",
+      target: path,
+      ...(options.body ? { body: JSON.parse(options.body) } : {}),
+    })));
+    if (nativeResponse.status < 200 || nativeResponse.status >= 300) {
+      throw new Error(nativeResponse.body?.error?.message || `请求失败 (${nativeResponse.status})`);
+    }
+    setConnection(true);
+    return nativeResponse.body;
+  }
   const token = sessionStorage.getItem("financial-beancount-token");
   const headers = { Accept: "application/json", ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;

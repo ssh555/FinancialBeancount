@@ -43,6 +43,9 @@ ENV/
 # IDE
 .vscode/
 .idea/
+android/.gradle/
+android/local.properties
+android/**/build/
 *.swp
 *.swo
 *~

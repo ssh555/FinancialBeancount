@@ -23,7 +23,8 @@
 
 - **Bundled local web app**: Mobile-first dashboard, unique transaction browser, and complete review queues with no cloud dependency
 - **Installable offline shell**: The local UI can be installed from a modern browser as a PWA; sensitive API responses are never cached
-- **Android-ready core boundary**: a socket-free JSON bridge calls the same ledger/API logic and serves only allowlisted bundled assets; the Kotlin/APK shell remains a following stage
+- **Android-ready core boundary**: a socket-free JSON bridge calls the same ledger/API logic and serves only allowlisted bundled assets
+- **Minimal Android debug shell**: a local-origin-only WebView uses the embedded Python core and app-private SQLite without requesting network or broad storage permission
 - **Three-level fingerprint deduplication**: L1 (exact) / L2 (loose) / L3 (fuzzy) matching strategies
 - **Multi-format support**: CSV, XLSX, PDF auto-conversion
 - **Smart account classification**: Auto-classification based on Beancount best practices
@@ -357,7 +358,8 @@ This tool is provided for educational and personal finance management purposes. 
 
 - **内置本地 Web 应用**：移动端优先的统计概览、唯一交易浏览和完整人工审核队列，不依赖云服务
 - **可安装离线壳层**：现代浏览器可将本地界面安装为 PWA；敏感 API 响应不会进入离线缓存
-- **Android 内核边界**：无 localhost 的 JSON 桥直接调用同一账本/API 逻辑，并只提供白名单内置资源；Kotlin/APK 壳层将在下一阶段实现
+- **Android 内核边界**：无 localhost 的 JSON 桥直接调用同一账本/API 逻辑，并只提供白名单内置资源
+- **最小 Android 调试壳**：仅允许本地应用域名的 WebView 调用内嵌 Python 内核和应用私有 SQLite，不申请网络或全盘存储权限
 - **三级哈希指纹去重**：L1(精确) / L2(宽松) / L3(模糊) 匹配策略
 - **多格式支持**：CSV、XLSX、PDF 自动转换
 - **智能账户分类**：基于 Beancount 最佳实践的自动分类

@@ -16,6 +16,6 @@ Android 版本必须继续使用统一账本 Schema、导入适配器、审核�
 
 ## 当前小阶段
 
-本阶段已经提供无网络桥接与静态资源白名单，并验证健康检查、统一 Schema 初始化、移动端新增/查询交易及路径拒绝。下一批次建立 Kotlin/Gradle 工程、WebView 请求拦截器、Storage Access Framework 批量选择桥和 Android 仪器测试。
+本阶段已经提供最小 Kotlin/Gradle 工程、无网络桥接、仅允许应用内域名的 WebView 和静态资源白名单，并验证健康检查、统一 Schema 初始化、移动端新增/查询交易及路径拒绝。手动 GitHub Actions 只生成调试 APK，不发布也不签署正式版本。下一批次加入 Storage Access Framework 批量选择与导出桥。
 
 Android APK/AAB 尚未形成可发布产物；不得把当前桥接测试描述为完整 Android 应用或发布就绪。
