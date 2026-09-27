@@ -270,13 +270,18 @@ async function showImportForm() {
     const { data } = await request("/api/v1/import-formats");
     state.importFormats = data;
     state.importQueue = [];
+    const nativePicker = globalThis.FinancialBeancountNative?.pickSingleFile;
+    const pickers = nativePicker ? `
+        <button class="button secondary" data-native-picker="single" type="button">选择一个文件</button>
+        <button class="button secondary" data-native-picker="multiple" type="button">选择多个文件</button>
+        <button class="button secondary" data-native-picker="folder" type="button">选择文件夹</button>` : `
+        <label class="button secondary file-picker">选择一个或多个文件<input data-import-files type="file" multiple accept=".csv,.xlsx,.pdf"></label>
+        <label class="button secondary file-picker">选择文件夹<input data-import-folder type="file" multiple webkitdirectory directory accept=".csv,.xlsx,.pdf"></label>`;
     $("#dialog-content").innerHTML = `<form class="edit-form" data-statement-import>
       <label>默认来源账户<input name="default_source_account" placeholder="例如：支付宝-本人；加入队列后仍可逐项修改"></label>
-      <div class="import-pickers">
-        <label class="button secondary file-picker">选择一个或多个文件<input data-import-files type="file" multiple accept=".csv,.xlsx,.pdf"></label>
-        <label class="button secondary file-picker">选择文件夹<input data-import-folder type="file" multiple webkitdirectory directory accept=".csv,.xlsx,.pdf"></label>
-      </div>
+      <div class="import-pickers">${pickers}</div>
       <p class="muted">支持 CSV、XLSX、PDF。文件夹中的其他类型会被自动过滤；同一文件不会重复加入当前队列。</p>
+      <p data-import-skipped class="muted"></p>
       <div data-import-queue>${empty("请选择账单文件或文件夹")}</div>
       <div data-import-progress class="muted"></div>
       <button class="button primary wide" type="submit" disabled>导入队列中的 0 个文件</button>
@@ -293,12 +298,12 @@ function compatibleImportFormats(file) {
 function addFilesToImportQueue(files) {
   const account = text($("[data-statement-import] [name='default_source_account']")?.value).trim();
   const existing = new Set(state.importQueue.map(item => item.key));
-  let skipped = 0;
+  const skipped = [];
   for (const file of files) {
     const formats = compatibleImportFormats(file);
-    if (!formats.length || file.size > 50 * 1024 * 1024) { skipped += 1; continue; }
+    if (!formats.length || file.size > 50 * 1024 * 1024) { skipped.push(file.webkitRelativePath || file.name); continue; }
     const key = `${file.webkitRelativePath || file.name}:${file.size}:${file.lastModified}`;
-    if (existing.has(key)) { skipped += 1; continue; }
+    if (existing.has(key)) { skipped.push(file.webkitRelativePath || file.name); continue; }
     existing.add(key);
     state.importQueue.push({
       id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${state.importQueue.length}`,
@@ -307,8 +312,28 @@ function addFilesToImportQueue(files) {
     });
   }
   renderImportQueue();
-  if (skipped) toast(`已过滤 ${skipped} 个不支持、过大或重复的文件`);
+  if (skipped.length) reportSkippedFiles(skipped.map(name => ({ name, reason: "不支持、过大或重复" })));
+  return skipped;
 }
+
+function reportSkippedFiles(skipped) {
+  const node = $("[data-import-skipped]");
+  if (node) node.textContent = skipped.length ? `未加入队列：${skipped.map(item => `${item.name}（${item.reason}）`).join("、")}` : "";
+  if (skipped.length) toast(`有 ${skipped.length} 个文件未加入队列`);
+}
+
+globalThis.acceptNativeImportFiles = payloadJson => {
+  const payload = JSON.parse(payloadJson);
+  const files = payload.files.map(item => ({
+    name: item.name,
+    size: item.size,
+    lastModified: item.lastModified,
+    webkitRelativePath: item.relativePath,
+    nativeBase64: item.contentBase64,
+  }));
+  const queueSkipped = addFilesToImportQueue(files).map(name => ({ name, reason: "重复文件" }));
+  reportSkippedFiles([...(payload.skipped || []), ...queueSkipped]);
+};
 
 function renderImportQueue() {
   const container = $("[data-import-queue]");
@@ -356,6 +381,7 @@ async function importQueuedStatements(form) {
 }
 
 function fileAsBase64(file) {
+  if (file.nativeBase64) return Promise.resolve(file.nativeBase64);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(text(reader.result).split(",", 2)[1]);
@@ -423,6 +449,11 @@ document.addEventListener("click", event => {
   const detail = event.target.closest("[data-detail='transaction']"); if (detail) showDetail(`/api/v1/transactions/${detail.dataset.id}`, "交易详情");
   const endpoint = event.target.closest("[data-endpoint]:not([data-decision])"); if (endpoint) showDetail(endpoint.dataset.endpoint, endpoint.dataset.title);
   const removeImport = event.target.closest("[data-import-remove]"); if (removeImport) { state.importQueue = state.importQueue.filter(item => item.id !== removeImport.dataset.importRemove); renderImportQueue(); }
+  const nativePicker = event.target.closest("[data-native-picker]");
+  if (nativePicker) {
+    const actions = { single: "pickSingleFile", multiple: "pickMultipleFiles", folder: "pickFolder" };
+    globalThis.FinancialBeancountNative?.[actions[nativePicker.dataset.nativePicker]]?.();
+  }
   if (event.target.closest("[data-action='refresh']")) showView(state.view);
 });
 

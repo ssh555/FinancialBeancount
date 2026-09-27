@@ -1,24 +1,45 @@
 package io.github.ssh555.financialbeancount
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.documentfile.provider.DocumentFile
 import androidx.webkit.WebViewClientCompat
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import java.io.ByteArrayInputStream
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlin.concurrent.thread
 
 private const val APP_ORIGIN = "https://appassets.androidplatform.net"
+private const val MAX_IMPORT_BYTES = 50L * 1024 * 1024
+private val IMPORT_SUFFIXES = setOf("csv", "xlsx", "pdf")
+
+private data class SelectedDocument(val document: DocumentFile, val relativePath: String)
 
 class MainActivity : ComponentActivity() {
     private lateinit var bridge: PyObject
     private lateinit var webView: WebView
+
+    private val singleFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        importSelectedUris(listOfNotNull(uri))
+    }
+    private val multipleFilePicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        importSelectedUris(uris)
+    }
+    private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) importSelectedFolder(uri)
+    }
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,6 +73,89 @@ class MainActivity : ComponentActivity() {
         fun request(requestJson: String): String {
             val database = getDatabasePath("ledger.sqlite3").absolutePath
             return bridge.callAttr("dispatch", database, requestJson).toString()
+        }
+
+        @JavascriptInterface
+        fun pickSingleFile() = runOnUiThread { singleFilePicker.launch(arrayOf("*/*")) }
+
+        @JavascriptInterface
+        fun pickMultipleFiles() = runOnUiThread { multipleFilePicker.launch(arrayOf("*/*")) }
+
+        @JavascriptInterface
+        fun pickFolder() = runOnUiThread { folderPicker.launch(null) }
+    }
+
+    private fun importSelectedUris(uris: List<Uri>) {
+        thread(name = "statement-file-reader") {
+            val documents = uris.mapNotNull { uri ->
+                DocumentFile.fromSingleUri(this, uri)?.let { SelectedDocument(it, it.name ?: "未命名文件") }
+            }
+            deliverSelectedDocuments(documents)
+        }
+    }
+
+    private fun importSelectedFolder(uri: Uri) {
+        thread(name = "statement-folder-reader") {
+            val root = DocumentFile.fromTreeUri(this, uri)
+            val documents = if (root == null) emptyList() else collectFiles(root, "")
+            deliverSelectedDocuments(documents)
+        }
+    }
+
+    private fun collectFiles(directory: DocumentFile, prefix: String): List<SelectedDocument> =
+        directory.listFiles().flatMap { child ->
+            val name = child.name ?: "未命名文件"
+            val path = if (prefix.isEmpty()) name else "$prefix/$name"
+            when {
+                child.isDirectory -> collectFiles(child, path)
+                child.isFile -> listOf(SelectedDocument(child, path))
+                else -> emptyList()
+            }
+        }
+
+    private fun deliverSelectedDocuments(documents: List<SelectedDocument>) {
+        val files = JSONArray()
+        val skipped = JSONArray()
+        documents.forEach { selected ->
+            val document = selected.document
+            val name = document.name ?: selected.relativePath
+            val suffix = name.substringAfterLast('.', "").lowercase()
+            val size = document.length()
+            val reason = when {
+                suffix !in IMPORT_SUFFIXES -> "不支持的文件类型"
+                size > MAX_IMPORT_BYTES -> "文件超过 50 MiB"
+                else -> null
+            }
+            if (reason != null) {
+                skipped.put(JSONObject().put("name", selected.relativePath).put("reason", reason))
+                return@forEach
+            }
+            try {
+                val bytes = contentResolver.openInputStream(document.uri)?.use { it.readBytes() }
+                    ?: error("无法打开文件")
+                if (bytes.size > MAX_IMPORT_BYTES) error("文件超过 50 MiB")
+                files.put(
+                    JSONObject()
+                        .put("name", name)
+                        .put("relativePath", selected.relativePath)
+                        .put("size", bytes.size)
+                        .put("lastModified", document.lastModified())
+                        .put("contentBase64", Base64.encodeToString(bytes, Base64.NO_WRAP)),
+                )
+            } catch (error: Exception) {
+                skipped.put(
+                    JSONObject()
+                        .put("name", selected.relativePath)
+                        .put("reason", error.message ?: "无法读取文件"),
+                )
+            }
+        }
+        val payload = JSONObject().put("files", files).put("skipped", skipped).toString()
+        webView.post {
+            webView.evaluateJavascript(
+                "globalThis.acceptNativeImportFiles(${JSONObject.quote(payload)})",
+                null,
+            )
         }
     }
 

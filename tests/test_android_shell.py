@@ -20,6 +20,11 @@ def test_android_shell_reuses_core_without_network_permission() -> None:
     assert 'from(rootProject.projectDir.parentFile.resolve("beancount_dedup"))' in build
     assert 'endsWith("PythonSources")' in build
     assert "sourceCompatibility = JavaVersion.VERSION_17" in build
+    assert "ActivityResultContracts.OpenDocument()" in activity
+    assert "ActivityResultContracts.OpenMultipleDocuments()" in activity
+    assert "ActivityResultContracts.OpenDocumentTree()" in activity
+    assert "DocumentFile.fromTreeUri" in activity
+    assert "androidx.documentfile:documentfile" in build
 
 
 def test_web_client_uses_native_bridge_before_http_fetch() -> None:
@@ -29,6 +34,9 @@ def test_web_client_uses_native_bridge_before_http_fetch() -> None:
     assert native < network
     assert 'method: options.method || "GET"' in script
     assert "JSON.parse(options.body)" in script
+    assert "acceptNativeImportFiles" in script
+    assert "file.nativeBase64" in script
+    assert 'single: "pickSingleFile"' in script
 
 
 def test_android_debug_workflow_is_manual_and_uploads_only_debug_apk() -> None:
