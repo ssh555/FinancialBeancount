@@ -109,3 +109,27 @@ review, and end-to-end tests are complete.
 Publisher credential validation and installer upgrades from every published version remain future
 release batches. Linux AppImage construction, replacement-upgrade data preservation, detached GPG
 signing and the strict native gate are implemented; the real publisher-key run remains pending.
+
+## Post-release appearance extensions
+
+Add a lightweight skin system only after the first stable release, without blocking correctness,
+update, or acceptance work:
+
+- Keep the current presentation as the default skin and provide an original default application icon
+  which does not depend on third-party character artwork.
+- Add optional Seele Vollerei Herrscher of Rebirth, Stygian Nymph, and Starchasm Nyx-themed skins,
+  each with its corresponding icon and the display name `希芙の账单`.
+- Skins may change colors, backgrounds, icons, and the display name only. They must not alter the
+  unified ledger schema, business rules, or user-data directory.
+- The publisher must verify permission for character artwork, names, and derivative icons before a
+  public Release; the repository must not bundle official assets with unclear provenance or rights.
+
+## Additional pre-release items
+
+- Add an About surface with product identity, the author's GitHub and other personal labels, project
+  GitHub provenance, and license information.
+- Add Delete all data with a clear second confirmation and return to an empty-ledger state afterward;
+  it must not remove the installed application.
+- Full-ledger acceptance must audit investment/fund movements, refunds, inter-account transfers, and
+  suspected duplicate records. The displayed cash-flow difference/balance must state that it is not
+  the current account balance.

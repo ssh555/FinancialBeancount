@@ -110,7 +110,8 @@ def test_native_android_overview_uses_async_core_client() -> None:
     assert '"日" to "day"' in overview
     assert "minHeight = dp(48)" in overview
     assert 'private var range = "all"' in overview
-    assert '"结余 ${money(data.getString("net_cash_flow"))}' in overview
+    assert '"收支差额 ${money(data.getString("net_cash_flow"))}' in overview
+    assert "收支差额不是账户当前余额" in overview
 
 
 def test_native_android_transactions_are_paginated_and_searchable() -> None:

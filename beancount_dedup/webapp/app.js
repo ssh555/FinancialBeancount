@@ -142,7 +142,7 @@ async function loadOverview() {
       request(`/api/v1/statistics/timeline?period=${state.timelinePeriod}&${query}`),
     ]);
     const cards = [
-      ["结余", money(data.net_cash_flow), "收入 + 退款 − 支出", "featured"],
+      ["收支差额", money(data.net_cash_flow), "收入 + 退款 − 支出（非账户余额）", "featured"],
       ["支出", money(data.gross_expense), `${data.expense_count} 笔`, ""],
       ["收入", money(data.ordinary_income), `${data.income_count} 笔`, ""],
       ["退款", money(data.refunds), `${data.refund_count} 笔`, ""],
@@ -158,7 +158,7 @@ async function loadOverview() {
       <div class="category-bar"><span style="width:${Math.max(0, Number(item.net_expense)) / maximum * 100}%"></span></div></div>`).join("") : empty("当前范围没有可统计交易");
     $("#timeline-list").innerHTML = timeline.data.length ? timeline.data.map(item => {
       const label = item.date_from === item.date_to ? item.date_from : `${item.date_from} ～ ${item.date_to}`;
-      return `<div class="timeline-row"><strong>${escapeHtml(label)}</strong><span>收入 ${money(item.ordinary_income)}</span><span>支出 ${money(item.gross_expense)}</span><span>结余 ${money(item.net_cash_flow)}</span></div>`;
+      return `<div class="timeline-row"><strong>${escapeHtml(label)}</strong><span>收入 ${money(item.ordinary_income)}</span><span>支出 ${money(item.gross_expense)}</span><span>收支差额 ${money(item.net_cash_flow)}</span></div>`;
     }).join("") : empty("当前范围没有周期统计");
     const excluded = data.pending_review_excluded_count + data.unclassified_excluded_count;
     if (excluded) toast(`${excluded} 笔待审核或未分类交易未计入收支`);

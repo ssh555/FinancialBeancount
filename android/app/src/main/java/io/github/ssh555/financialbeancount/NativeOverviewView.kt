@@ -55,7 +55,7 @@ class NativeOverviewView(
                 val data = response.getJSONObject("body").getJSONObject("data")
                 val excluded = data.optInt("pending_review_excluded_count") + data.optInt("unclassified_excluded_count")
                 val note = if (excluded > 0) "\n$excluded 笔待审核或未分类交易未计入收支" else ""
-                summary.text = "结余 ${money(data.getString("net_cash_flow"))}   支出 ${money(data.getString("gross_expense"))}\n收入 ${money(data.getString("ordinary_income"))}   退款 ${money(data.getString("refunds"))}$note"
+                summary.text = "收支差额 ${money(data.getString("net_cash_flow"))}   支出 ${money(data.getString("gross_expense"))}\n收入 ${money(data.getString("ordinary_income"))}   退款 ${money(data.getString("refunds"))}\n收支差额不是账户当前余额$note"
             }.onFailure { summary.text = it.message ?: "统计加载失败" }
         }
         client.request("GET", "/api/v1/statistics/timeline?period=$grouping&$query") { result ->
@@ -68,7 +68,7 @@ class NativeOverviewView(
                     timeline.addView(TextView(context).apply {
                         textSize = 15f
                         setPadding(0, dp(12), 0, dp(12))
-                        text = "${item.getString("date_from")} ～ ${item.getString("date_to")}\n收入 ${money(item.getString("ordinary_income"))}   支出 ${money(item.getString("gross_expense"))}   结余 ${money(item.getString("net_cash_flow"))}"
+                        text = "${item.getString("date_from")} ～ ${item.getString("date_to")}\n收入 ${money(item.getString("ordinary_income"))}   支出 ${money(item.getString("gross_expense"))}   收支差额 ${money(item.getString("net_cash_flow"))}"
                     })
                 }
                 if (rows.length() == 0) timeline.addView(TextView(context).apply { text = "当前范围没有可统计交易" })
