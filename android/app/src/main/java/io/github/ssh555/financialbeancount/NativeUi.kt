@@ -12,6 +12,10 @@ import android.widget.EditText
 import android.widget.TextView
 
 object NativeUi {
+    private val regularTypeface: Typeface by lazy {
+        runCatching { Typeface.createFromFile("/system/fonts/NotoSansCJK-Regular.ttc") }
+            .getOrElse { Typeface.create("sans-serif", Typeface.NORMAL) }
+    }
     val ink = Color.rgb(23, 34, 29)
     val muted = Color.rgb(104, 117, 111)
     val paper = Color.rgb(243, 242, 236)
@@ -40,7 +44,7 @@ object NativeUi {
             is EditText -> {
                 view.setTextColor(ink)
                 view.setHintTextColor(muted)
-                view.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                view.typeface = regularTypeface
                 view.background = rounded(view.context, Color.WHITE, 11)
                 view.setPadding(dp(view.context, 12), 0, dp(view.context, 12), 0)
             }
@@ -48,7 +52,7 @@ object NativeUi {
             is TextView -> {
                 view.setTextColor(if (view.tag == "featured") Color.WHITE else ink)
                 val style = if (view.typeface?.isBold == true) Typeface.BOLD else Typeface.NORMAL
-                view.typeface = Typeface.create("sans-serif", style)
+                view.typeface = Typeface.create(regularTypeface, style)
             }
         }
         if (view is ViewGroup) {
@@ -61,7 +65,7 @@ object NativeUi {
         val isDanger = danger || label.contains("删除") || label.contains("排除")
         val isCard = label.contains('\n')
         button.isAllCaps = false
-        button.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        button.typeface = Typeface.create(regularTypeface, Typeface.BOLD)
         button.stateListAnimator = null
         button.backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
         button.background = rounded(

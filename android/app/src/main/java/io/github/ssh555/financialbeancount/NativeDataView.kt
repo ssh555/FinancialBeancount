@@ -93,7 +93,8 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         files.forEach { item ->
             queue.addView(LinearLayout(context).apply {
                 orientation = VERTICAL
-                setPadding(0, dp(8), 0, dp(8))
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                NativeUi.card(this, 14)
                 addView(TextView(context).apply { text = "${item.relativePath}\n${item.status}${item.message.takeIf(String::isNotBlank)?.let { " · $it" }.orEmpty()}" })
                 if (item.status == "等待导入") {
                     val spinner = Spinner(context).apply {
@@ -198,12 +199,24 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         text = value
         textSize = 18f
         setTypeface(typeface, Typeface.BOLD)
-        setPadding(0, dp(20), 0, dp(8))
+        setPadding(dp(2), dp(22), 0, dp(8))
     }
 
     private fun action(label: String, click: () -> Unit) = Button(context).apply {
-        text = label
-        minHeight = dp(48)
+        val descriptions = mapOf(
+            "选择一个文件" to "导入一份微信、支付宝或银行账单",
+            "选择多个文件" to "一次加入多份账单并逐项查看结果",
+            "选择文件夹" to "扫描所选文件夹中的支持格式",
+            "恢复完整归档" to "用本地归档覆盖并恢复当前账本",
+            "导出完整归档" to "备份账本、原始记录和审核轨迹",
+            "检查更新" to "仅在点击后连接 GitHub 检查新版",
+            "删除所有数据" to "永久清空本设备账本，不删除应用",
+        )
+        text = descriptions[label]?.let { "$label  ›\n$it" } ?: label
+        gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        minHeight = if (descriptions.containsKey(label)) dp(66) else dp(48)
+        setPadding(dp(14), dp(8), dp(14), dp(8))
+        contentDescription = label
         setOnClickListener { click() }
     }
 

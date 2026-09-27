@@ -33,12 +33,14 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
         addView(TextView(context).apply { text = "交易"; textSize = 26f; setTypeface(typeface, Typeface.BOLD) })
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
+            setPadding(0, dp(6), 0, dp(6))
             addView(Button(context).apply { text = "回收站"; setOnClickListener { showTrash() } }, LayoutParams(0, dp(48), 1f))
             addView(Button(context).apply { text = "记一笔"; NativeUi.styleButton(this, primary = true); setOnClickListener { showEditor(null) } }, LayoutParams(0, dp(48), 1f))
         })
         addView(sourceFilter)
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
+            setPadding(0, dp(6), 0, dp(10))
             search.hint = "搜索商户、备注"
             search.isSingleLine = true
             addView(search, LayoutParams(0, dp(52), 1f))
@@ -76,6 +78,7 @@ class NativeTransactionsView(context: Context, private val client: NativeLedgerC
                         minHeight = dp(64)
                         gravity = Gravity.START or Gravity.CENTER_VERTICAL
                         text = "${item.optString("merchant", "未命名交易")}   ${money(item.getString("amount"))}\n${item.getString("booking_date")} · ${item.optString("category", "未分类")}"
+                        contentDescription = "打开交易详情"
                         setOnClickListener { showDetail(item.getString("canonical_id")) }
                     })
                 }

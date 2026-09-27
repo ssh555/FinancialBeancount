@@ -8,7 +8,6 @@ import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -27,14 +26,22 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
         setPadding(dp(16), dp(16), dp(16), dp(24))
         addView(TextView(context).apply { text = "待处理"; textSize = 26f; setTypeface(typeface, Typeface.BOLD) })
         addView(TextView(context).apply { text = "优先处理必须项：确认并入、修正并入、关联/合并、保留独立、排除，或暂缓。" })
-        addView(HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                listOf("导入" to "imports", "归并" to "matches", "退款" to "refunds", "分类" to "classifications", "警告" to "warnings", "已通过" to "acknowledged").forEach { (label, value) ->
-                    addView(Button(context).apply { text = label; minHeight = dp(48); setOnClickListener { reviewType = value; reload() } })
-                }
-            })
+        addView(LinearLayout(context).apply {
+            orientation = VERTICAL
+            val choices = listOf("导入" to "imports", "归并" to "matches", "退款" to "refunds", "分类" to "classifications", "警告" to "warnings", "已通过" to "acknowledged")
+            choices.chunked(3).forEach { rowChoices ->
+                addView(LinearLayout(context).apply {
+                    orientation = HORIZONTAL
+                    rowChoices.forEach { (label, value) ->
+                        addView(Button(context).apply {
+                            text = label
+                            minWidth = 0
+                            minHeight = dp(44)
+                            setOnClickListener { reviewType = value; reload() }
+                        }, LayoutParams(0, dp(48), 1f))
+                    }
+                })
+            }
         })
         list.orientation = VERTICAL
         addView(list)
@@ -124,21 +131,6 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
                     text = "${title(type, item)}\n${subtitle(type, item)}"
                     setOnClickListener { showDetail(type, item, endpoint) }
                 })
-                if (type != "warnings" && type != "acknowledged") addView(LinearLayout(context).apply {
-                    orientation = HORIZONTAL
-                    addView(Button(context).apply {
-                        text = "修正/排除"
-                        setOnClickListener { if (type == "imports" || type == "matches") showModify(type, item, endpoint) else showCanonicalEdit(type, item, endpoint) }
-                    }, LayoutParams(0, dp(48), 1f))
-                    addView(Button(context).apply {
-                        text = when (type) { "matches", "refunds" -> "保留独立"; "classifications" -> "保留原状"; else -> "排除" }
-                        setOnClickListener { decide(endpoint, "reject") }
-                    }, LayoutParams(0, dp(48), 1f))
-                    addView(Button(context).apply {
-                        text = if (type == "matches" || type == "refunds") "关联/合并" else "确认并入"
-                        setOnClickListener { decide(endpoint, "confirm") }
-                    }, LayoutParams(0, dp(48), 1f))
-                })
             })
         }
         NativeUi.styleTree(list)
@@ -149,10 +141,30 @@ class NativeReviewView(context: Context, private val client: NativeLedgerClient)
             .setTitle(title(type, item))
             .setMessage(item.toString(2))
             .setNegativeButton("关闭", null)
-        if (type == "imports" || type == "matches") {
-            builder.setPositiveButton("人工修改") { _, _ -> showModify(type, item, endpoint) }
+        if (type != "warnings" && type != "acknowledged") {
+            builder.setPositiveButton(if (type == "matches" || type == "refunds") "关联/合并" else "确认并入") { _, _ -> decide(endpoint, "confirm") }
+            builder.setNeutralButton("更多处理") { _, _ -> showMoreActions(type, item, endpoint) }
         }
         builder.show()
+    }
+
+    private fun showMoreActions(type: String, item: JSONObject, endpoint: String) {
+        val preserveLabel = when (type) {
+            "matches", "refunds" -> "保留为独立交易"
+            "classifications" -> "保留原分类"
+            else -> "排除此项"
+        }
+        AlertDialog.Builder(context)
+            .setTitle("选择处理方式")
+            .setItems(arrayOf("修正信息", preserveLabel, "暂缓处理")) { dialog, index ->
+                when (index) {
+                    0 -> if (type == "imports" || type == "matches") showModify(type, item, endpoint) else showCanonicalEdit(type, item, endpoint)
+                    1 -> decide(endpoint, "reject")
+                    else -> dialog.dismiss()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun showModify(type: String, item: JSONObject, endpoint: String) {

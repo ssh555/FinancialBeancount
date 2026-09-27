@@ -148,7 +148,7 @@ def test_native_android_overview_uses_async_core_client() -> None:
     assert '"日" to "day"' in overview
     assert "minHeight = dp(48)" in overview
     assert 'private var range = "all"' in overview
-    assert '"收支差额 ${money(data.getString("net_cash_flow"))}' in overview
+    assert 'metricRow("收支差额", data.getString("net_cash_flow")' in overview
     assert "收支差额不是账户当前余额" in overview
 
 
@@ -184,7 +184,7 @@ def test_native_android_review_covers_all_queues_and_decisions() -> None:
     assert "/api/v1/import-reviews/" in source
     assert 'decide(endpoint, "confirm")' in source
     assert 'decide(endpoint, "reject")' in source
-    assert 'builder.setPositiveButton("人工修改")' in source
+    assert 'setTitle("选择处理方式")' in source
     assert 'if (type == "imports") "modify" else "confirm"' in source
     assert 'put("changes", changes)' in source
     assert "/api/v1/review/refunds/warnings/batch" in source
