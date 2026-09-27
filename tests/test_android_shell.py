@@ -97,3 +97,14 @@ def test_native_android_transactions_are_paginated_and_searchable() -> None:
     assert 'mutate("DELETE"' in source
     assert "/api/v1/deleted-transactions" in source
     assert '}/restore"' in source
+
+
+def test_native_android_review_covers_all_queues_and_decisions() -> None:
+    source = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeReviewView.kt"
+    ).read_text(encoding="utf-8")
+    for queue in ("imports", "matches", "refunds", "classifications"):
+        assert f'"{queue}"' in source
+    assert "/api/v1/import-reviews/" in source
+    assert 'decide(endpoint, "confirm")' in source
+    assert 'decide(endpoint, "reject")' in source
