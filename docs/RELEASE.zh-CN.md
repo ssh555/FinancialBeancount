@@ -12,6 +12,8 @@
 
 包格式、Secret/Variable 名称、签名或公证命令、更新资源名称、支持升级范围或 Release 门禁发生变化时，必须在同一提交中同步维护 README 和对应的中英文文档。预览构建无需发布凭据；选择 `signed_release` 后一律失败关闭，不允许测试证书或未签名回退。
 
+每个签名矩阵作业都会在编译前执行不泄露密钥的预检：确认通用更新身份与当前平台必需字段存在，检查 Base64、固定密钥长度、Windows HTTPS 时间戳地址、Apple Team ID/Developer ID 形态及 Linux 完整指纹。日志只报告字段名，不输出字段值；随后仍由平台原生工具权威验证证书、密码、信任链和真实签名。
+
 ## 发布者配置矩阵
 
 | 范围 | GitHub 配置 | 配置者 | 状态 |
@@ -22,6 +24,10 @@
 | Linux | Secret `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY`、可选 `FINANCIAL_BEANCOUNT_LINUX_SIGNING_KEY_PASSPHRASE`；Variable `FINANCIAL_BEANCOUNT_LINUX_SIGNING_FINGERPRINT` | Linux 发布者 | AppImage 链路已实现；正式发布者密钥正向验证待完成 |
 
 证书续期、吊销和发布者交接属于部署操作。轮换前必须在候选构建中验证新信任链，按需更新固定公钥/身份，保留上一可信版本的回滚能力，并在发行说明中记录。证书过期或被吊销时不得通过关闭门禁绕过。
+
+## 受保护仓库配置
+
+发布者应创建名为 `release` 的 GitHub Environment，配置必需审核者；若仓库套餐支持，应禁止发起者自审，并只允许受保护默认分支部署。在签名矩阵作业尚未明确绑定该 Environment 时，私钥和密码必须存入受保护的仓库 Secret；只有完成绑定后才改用 Environment Secret。公钥指纹、发布者名称、Team ID、时间戳地址及 Ed25519 公钥存入仓库 Variable。分支保护/CODEOWNERS 应限制工作流修改，并要求主 `CI` 成功才能合并。GitHub 托管 Runner 是临时环境，流程不会把凭据写入仓库或上传为产物。当前可复用工作流读取仓库配置；若迁移到 Environment，必须同时绑定矩阵作业并验证审批策略。
 
 ## 已实现门禁
 

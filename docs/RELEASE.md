@@ -26,6 +26,12 @@ asset names, supported upgrade versions or release gates must update this docume
 README section in the same commit. Preview builds remain available without publisher credentials.
 Requesting signed mode is fail-closed and never substitutes a test certificate or unsigned artifact.
 
+Before compilation, every signed matrix job runs a non-secret preflight. It checks that the common
+update identity and that platform's required fields exist, validates base64 encodings and fixed key
+lengths, requires an HTTPS Windows timestamp URL, validates Apple Team ID/Developer ID shapes, and
+requires a full Linux fingerprint. It reports field names only—never credential values. Native tools
+still perform the authoritative certificate, password, trust-chain and signing checks afterwards.
+
 ### Publisher configuration matrix
 
 | Scope | GitHub configuration | Owner | Status |
@@ -40,6 +46,18 @@ identity, the publisher must verify the new trust chain in a preview/release-can
 pinned public identity where applicable, preserve rollback access to the last trusted build, and
 record the rotation in release notes. Revoked or expired credentials must never be bypassed by
 disabling a gate.
+
+### Protected repository setup
+
+The publisher should create a GitHub Environment named `release` with required reviewers, prevent
+self-review where the repository plan supports it, limit deployment branches to the protected default
+branch. Store all private keys/passwords as protected repository secrets unless the signed build job
+is explicitly bound to that Environment; only then use Environment secrets. Public fingerprints,
+publisher names, team IDs, timestamp URL and the Ed25519 public key are repository variables.
+Restrict workflow changes with branch protection/CODEOWNERS and require the green `CI` status before
+merging. GitHub-hosted runners are ephemeral; no credential is written to the repository or uploaded
+as an artifact. The current reusable workflow reads repository configuration; moving credentials to
+an Environment requires binding its matrix job to that Environment and testing the approval policy.
 
 ## Implemented gates
 
