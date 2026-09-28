@@ -88,6 +88,8 @@ class ConservativeMatcher:
     def _candidate(self, payment: RawTransaction, bank: RawTransaction) -> MatchCandidate | None:
         if payment.booking_date is None or bank.booking_date is None:
             return None
+        if _is_bank_internal_product(bank):
+            return None
         day_difference = abs((payment.booking_date - bank.booking_date).days)
         if day_difference > 1:
             return None
@@ -98,6 +100,17 @@ class ConservativeMatcher:
         payment_rail = _bank_payment_rail(bank)
         if payment_rail is not None and payment.source != payment_rail:
             return None
+        suffix_match = bool(
+            payment.bank_card_suffix
+            and bank.bank_card_suffix
+            and payment.bank_card_suffix == bank.bank_card_suffix
+        )
+        bank_name_match = _bank_name_matches(payment.payment_method, bank.payment_method)
+        # A wallet/balance-funded platform row has no corresponding bank debit.
+        # Merchant and amount resemblance must never manufacture one.
+        if not (payment.bank_card_suffix or bank_name_match):
+            return None
+
         evidence = [MatchEvidence("amount_exact", Decimal("0.25"))]
         evidence.append(
             MatchEvidence(
@@ -110,12 +123,6 @@ class ConservativeMatcher:
         else:
             evidence.append(MatchEvidence("booking_date_adjacent", Decimal("0.05")))
 
-        suffix_match = bool(
-            payment.bank_card_suffix
-            and bank.bank_card_suffix
-            and payment.bank_card_suffix == bank.bank_card_suffix
-        )
-        bank_name_match = _bank_name_matches(payment.payment_method, bank.payment_method)
         merchant_match = _merchant_similarity(payment, bank)
         exact_time = False
         close_time = False
@@ -138,6 +145,11 @@ class ConservativeMatcher:
             evidence.append(MatchEvidence("bank_time_unavailable", Decimal("0.00")))
         if merchant_match:
             evidence.append(MatchEvidence("merchant_semantic_match", Decimal("0.10")))
+
+        # A one-day settlement difference is plausible, but amount and bank
+        # alone cannot distinguish two unrelated purchases on adjacent days.
+        if day_difference == 1 and not (merchant_match or payment_rail is not None):
+            return None
 
         # Amount/date alone are never enough. Require at least one independent
         # funding, time, or merchant signal before presenting a candidate.
@@ -275,6 +287,14 @@ def _bank_payment_rail(bank: RawTransaction) -> Platform | None:
     if "财付通" in text or "微信" in text or "wechat" in text:
         return Platform.WECHAT
     return None
+
+
+def _is_bank_internal_product(bank: RawTransaction) -> bool:
+    text = " ".join((bank.description, bank.counterparty)).lower()
+    return any(
+        marker in text
+        for marker in ("朝朝宝转入", "朝朝宝转出", "理财购买", "理财赎回", "基金购买")
+    )
 
 
 def _merchant_tokens(value: str) -> set[str]:

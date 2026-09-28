@@ -58,20 +58,31 @@ class CandidateReviewService:
     def confirm_exact_payment_matches(self, actor: str) -> int:
         """Confirm unambiguous same-bank matches with exact amount, direction, and time."""
 
-        confirmed = 0
-        for candidate in self.list_groups("pending"):
-            codes = {item.code for item in candidate.candidate.evidence}
+        exact_groups = []
+        exact_by_payment: dict[str, int] = defaultdict(int)
+        exact_by_bank: dict[str, int] = defaultdict(int)
+        for group in self.list_groups("pending"):
+            codes = {item.code for item in group.candidate.evidence}
             exact_payment = "direction_exact" in codes and "bank_name_exact" in codes
             exact_refund_credit = "refund_credit_direction" in codes
             if (
-                candidate.candidate.is_ambiguous
-                or candidate.conflicts
-                or "datetime_exact" not in codes
-                or "amount_exact" not in codes
-                or not (exact_payment or exact_refund_credit)
+                "datetime_exact" in codes
+                and "amount_exact" in codes
+                and (exact_payment or exact_refund_credit)
+            ):
+                exact_groups.append(group)
+                exact_by_payment[group.candidate.payment_raw_id] += 1
+                exact_by_bank[group.candidate.bank_raw_id] += 1
+
+        confirmed = 0
+        for group in exact_groups:
+            if (
+                exact_by_payment[group.candidate.payment_raw_id] != 1
+                or exact_by_bank[group.candidate.bank_raw_id] != 1
+                or self.get_group(group.candidate.candidate_id).candidate.status != "pending"
             ):
                 continue
-            self.confirm(candidate.candidate.candidate_id, actor)
+            self.confirm(group.candidate.candidate_id, actor)
             confirmed += 1
         return confirmed
 
@@ -79,22 +90,35 @@ class CandidateReviewService:
         """Confirm a unique same-day match when the bank export has no time."""
 
         confirmed = 0
-        for group in self.list_groups("pending"):
-            codes = {item.code for item in group.candidate.evidence}
-            direction_supported = bool(
-                {"direction_exact", "refund_credit_direction"} & codes
-            )
-            if (
-                group.candidate.is_ambiguous
-                or group.conflicts
-                or "amount_exact" not in codes
-                or "booking_date_exact" not in codes
-                or "bank_name_exact" not in codes
-                or not direction_supported
-            ):
-                continue
-            self.confirm(group.candidate.candidate_id, actor)
-            confirmed += 1
+        while True:
+            pending = ConservativeMatcher(self.store).list_candidates("pending")
+            by_payment: dict[str, int] = defaultdict(int)
+            by_bank: dict[str, int] = defaultdict(int)
+            for candidate in pending:
+                by_payment[candidate.payment_raw_id] += 1
+                by_bank[candidate.bank_raw_id] += 1
+            selected = []
+            for candidate in pending:
+                codes = {item.code for item in candidate.evidence}
+                direction_supported = bool(
+                    {"direction_exact", "refund_credit_direction"} & codes
+                )
+                if (
+                    by_payment[candidate.payment_raw_id] == 1
+                    and by_bank[candidate.bank_raw_id] == 1
+                    and "amount_exact" in codes
+                    and "booking_date_exact" in codes
+                    and "bank_name_exact" in codes
+                    and direction_supported
+                ):
+                    selected.append(candidate.candidate_id)
+            if not selected:
+                break
+            for candidate_id in selected:
+                if self.get_group(candidate_id).candidate.status != "pending":
+                    continue
+                self.confirm(candidate_id, actor)
+                confirmed += 1
         return confirmed
 
     def confirm_ordered_statement_matches(self, actor: str) -> int:

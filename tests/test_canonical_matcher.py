@@ -101,6 +101,87 @@ def test_amount_and_date_without_independent_evidence_create_no_candidate(store)
     assert ConservativeMatcher(store).generate_candidates() == []
 
 
+def test_wallet_funded_payment_never_matches_bank_by_time_and_merchant(store):
+    add(
+        store,
+        raw(
+            Platform.ALIPAY,
+            "wallet-payment",
+            when=datetime(2026, 3, 1, 10, 0),
+            merchant="完全相同商户",
+            payment_method="账户余额",
+            suffix=None,
+        ),
+        raw(
+            Platform.BANK,
+            "bank",
+            when=datetime(2026, 3, 1, 10, 0),
+            merchant="完全相同商户",
+            payment_method="招商银行",
+            suffix=None,
+        ),
+    )
+
+    assert ConservativeMatcher(store).generate_candidates() == []
+
+
+def test_internal_product_row_never_matches_platform_payment(store):
+    _, bank = add(
+        store,
+        raw(
+            Platform.WECHAT,
+            "payment",
+            when=datetime(2026, 3, 1, 10, 0),
+            merchant="微信转账",
+            payment_method="招商银行储蓄卡(5066)",
+            suffix="5066",
+            amount="128.00",
+        ),
+        raw(
+            Platform.BANK,
+            "internal-product",
+            when=None,
+            merchant="代销理财快赎",
+            payment_method="招商银行",
+            suffix="5066",
+            amount="128.00",
+        ),
+    )
+    store.connection.execute(
+        "UPDATE raw_transactions SET description = '朝朝宝转出' WHERE raw_id = ?",
+        (bank.raw_id,),
+    )
+    store.connection.commit()
+
+    assert ConservativeMatcher(store).generate_candidates() == []
+
+
+def test_adjacent_day_same_bank_and_amount_without_merchant_evidence_is_not_a_match(store):
+    add(
+        store,
+        raw(
+            Platform.ALIPAY,
+            "next-day-payment",
+            when=datetime(2026, 6, 6, 11, 54),
+            merchant="淘宝闪购",
+            payment_method="招商银行储蓄卡(5066)",
+            suffix="5066",
+            amount="-23.90",
+        ),
+        raw(
+            Platform.BANK,
+            "previous-day-bank",
+            when=datetime(2026, 6, 5, 12, 0),
+            merchant="北京三快在线科技有限公司",
+            payment_method="招商银行",
+            suffix="5066",
+            amount="-23.90",
+        ),
+    )
+
+    assert ConservativeMatcher(store).generate_candidates() == []
+
+
 def test_same_amount_multiple_bank_records_are_marked_ambiguous(store):
     add(
         store,

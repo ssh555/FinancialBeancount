@@ -121,6 +121,80 @@ def test_exact_payment_match_can_be_safely_confirmed_in_batch(store):
     assert canonical.source_count == 2
 
 
+def test_unique_exact_time_edge_wins_over_same_amount_weak_conflict(store):
+    payment = store.add_raw(
+        raw(Platform.ALIPAY, "payment", merchant="同额商户", suffix="4000")
+    ).raw_transaction
+    exact_bank = store.add_raw(
+        raw(
+            Platform.BANK,
+            "exact-bank",
+            merchant="同额商户",
+            suffix="4000",
+            bank_time=datetime(2026, 6, 1, 12, 0, 1),
+        )
+    ).raw_transaction
+    store.add_raw(
+        raw(
+            Platform.BANK,
+            "weak-bank",
+            merchant="同额商户",
+            suffix="4000",
+            bank_time=None,
+        )
+    )
+    assert all(item.is_ambiguous for item in ConservativeMatcher(store).generate_candidates())
+
+    confirmed = CandidateReviewService(store).confirm_exact_payment_matches("acceptance")
+
+    assert confirmed == 1
+    canonical = store.find_canonical_for_raw(payment.raw_id)
+    assert canonical is not None
+    assert {item.raw_transaction.raw_id for item in canonical.source_links} == {
+        payment.raw_id,
+        exact_bank.raw_id,
+    }
+
+
+def test_unique_pass_recomputes_graph_after_exact_conflict_is_removed(store):
+    first_payment = store.add_raw(
+        raw(Platform.ALIPAY, "first-payment", merchant="同额商户", suffix="4000")
+    ).raw_transaction
+    second_payment = store.add_raw(
+        replace(
+            raw(Platform.ALIPAY, "second-payment", merchant="同额商户", suffix="4000"),
+            transaction_time=datetime(2026, 6, 1, 13, 0),
+        )
+    ).raw_transaction
+    first_bank = store.add_raw(
+        raw(
+            Platform.BANK,
+            "first-bank",
+            merchant="同额商户",
+            suffix="4000",
+            bank_time=datetime(2026, 6, 1, 12, 0, 1),
+        )
+    ).raw_transaction
+    second_bank = store.add_raw(
+        raw(
+            Platform.BANK,
+            "second-bank",
+            merchant="同额商户",
+            suffix="4000",
+            bank_time=datetime(2026, 6, 1, 13, 0, 9),
+        )
+    ).raw_transaction
+    ConservativeMatcher(store).generate_candidates()
+    service = CandidateReviewService(store)
+
+    assert service.confirm_exact_payment_matches("acceptance") == 1
+    assert service.confirm_unique_statement_matches("acceptance") == 1
+    assert store.find_canonical_for_raw(first_payment.raw_id) is not None
+    assert store.find_canonical_for_raw(first_bank.raw_id) is not None
+    assert store.find_canonical_for_raw(second_payment.raw_id) is not None
+    assert store.find_canonical_for_raw(second_bank.raw_id) is not None
+
+
 def test_exact_refund_credit_is_confirmed_once_as_refund(store):
     payment = raw(Platform.ALIPAY, "refund", merchant="高德顺风车", suffix="4000")
     payment = replace(
