@@ -3,10 +3,10 @@
 import csv
 from pathlib import Path
 
+import pytest
 from beancount_dedup.builtin_statement_formats import _disambiguate_repeated_bank_rows
 from beancount_dedup.ledger_store import LedgerStore
 from beancount_dedup.models import Platform
-import pytest
 from beancount_dedup.statement_importer import (
     StatementImporter,
     StatementImportError,

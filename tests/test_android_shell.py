@@ -176,12 +176,13 @@ def test_android_compose_transactions_cover_search_crud_sources_and_trash() -> N
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeApp.kt"
     ).read_text(encoding="utf-8")
     transactions = (
-        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeTransactions.kt"
+        ROOT
+        / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeTransactions.kt"
     ).read_text(encoding="utf-8")
     assert "ComposeTransactions(client" in app
-    assert 'page_size=30&search=' in transactions
+    assert "page_size=30&search=" in transactions
     assert '"GET", "/api/v1/sources"' in transactions
-    assert 'selectedSources = options.mapTo(mutableSetOf()) { it.value }' in transactions
+    assert "selectedSources = options.mapTo(mutableSetOf()) { it.value }" in transactions
     assert 'selectedSources.isEmpty() -> setOf("__no_source_selected__")' in transactions
     assert 'Text("全选")' in transactions
     assert 'if (amount.signum() > 0) "+$formatted"' in transactions
@@ -195,8 +196,12 @@ def test_android_compose_transactions_cover_search_crud_sources_and_trash() -> N
 
 
 def test_android_compose_review_covers_queues_and_warning_batches() -> None:
-    app = (ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeApp.kt").read_text(encoding="utf-8")
-    review = (ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeReview.kt").read_text(encoding="utf-8")
+    app = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeApp.kt"
+    ).read_text(encoding="utf-8")
+    review = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/ComposeReview.kt"
+    ).read_text(encoding="utf-8")
     assert "ComposeReview(client" in app
     for queue in ("imports", "matches", "refunds", "classifications", "warnings", "acknowledged"):
         assert f'"{queue}"' in review

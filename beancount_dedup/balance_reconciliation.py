@@ -71,9 +71,7 @@ class BalanceReconciliationService:
         return {
             "anchored_account_count": len(accounts),
             "anchored_row_count": sum(item["anchored_rows"] for item in accounts),
-            "verified_transition_count": sum(
-                item["verified_transitions"] for item in accounts
-            ),
+            "verified_transition_count": sum(item["verified_transitions"] for item in accounts),
             "break_count": sum(len(item["breaks"]) for item in accounts),
             "accounts": accounts,
         }

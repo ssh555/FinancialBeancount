@@ -85,7 +85,9 @@ class ConservativeMatcher:
         ).fetchall()
         return [self._from_row(row) for row in rows]
 
-    def _candidate(self, payment: RawTransaction, bank: RawTransaction) -> MatchCandidate | None:
+    def _candidate(  # noqa: PLR0911 - guard clauses document conservative rejection rules
+        self, payment: RawTransaction, bank: RawTransaction
+    ) -> MatchCandidate | None:
         if payment.booking_date is None or bank.booking_date is None:
             return None
         if _is_bank_internal_product(bank):

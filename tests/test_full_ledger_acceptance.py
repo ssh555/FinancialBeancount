@@ -1,7 +1,6 @@
-from pathlib import Path
-
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 from scripts.acceptance_full_ledger import BalanceSnapshotInput, discover_statements, run_acceptance
 

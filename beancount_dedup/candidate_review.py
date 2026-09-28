@@ -100,9 +100,7 @@ class CandidateReviewService:
             selected = []
             for candidate in pending:
                 codes = {item.code for item in candidate.evidence}
-                direction_supported = bool(
-                    {"direction_exact", "refund_credit_direction"} & codes
-                )
+                direction_supported = bool({"direction_exact", "refund_credit_direction"} & codes)
                 if (
                     by_payment[candidate.payment_raw_id] == 1
                     and by_bank[candidate.bank_raw_id] == 1
@@ -378,8 +376,7 @@ class CandidateReviewService:
             "funding_account": group.bank.source_account,
             "tx_type": (
                 TransactionType.REFUND
-                if "refund_credit_direction"
-                in {item.code for item in group.candidate.evidence}
+                if "refund_credit_direction" in {item.code for item in group.candidate.evidence}
                 else TransactionType.EXPENSE
                 if payment.direction == "expense" or payment.amount < 0
                 else TransactionType.INCOME

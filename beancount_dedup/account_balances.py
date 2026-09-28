@@ -46,7 +46,8 @@ class AccountBalanceService:
             Decimal("0"),
         )
         dates = [
-            item.as_of for item in (*cash_accounts, *internal_products, *snapshot_accounts)
+            item.as_of
+            for item in (*cash_accounts, *internal_products, *snapshot_accounts)
             if item.as_of
         ]
         return {
