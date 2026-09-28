@@ -8,6 +8,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
@@ -23,6 +24,13 @@ class NativeOverviewView(
     private val progress = ProgressBar(context)
     private var range = "all"
     private var grouping = "month"
+    private var knownBalanceValue: BigDecimal? = null
+    private var netCashFlowValue: BigDecimal? = null
+    private var excludedCount = 0
+    private val reconciliationNote = TextView(context).apply {
+        setTextColor(NativeUi.muted)
+        setPadding(dp(4), dp(6), dp(4), dp(8))
+    }
     private val sourceFilter = SourceFilterButton(context, client) { refresh() }
 
     init {
@@ -68,21 +76,21 @@ class NativeOverviewView(
                     .takeUnless { it.isBlank() || it == "null" }
                     ?: "暂无日期"
                 accountBalance.text = "账户余额 ${money(data.getString("known_balance"))}\n截至 $asOf · 不随来源筛选"
+                knownBalanceValue = data.getString("known_balance").toBigDecimal()
+                updateReconciliationNote()
                 NativeUi.styleTree(accountBalance)
             }.onFailure { accountBalance.text = it.message ?: "账户余额加载失败" }
         }
         client.request("GET", "/api/v1/statistics/summary?$query") { result ->
             result.onSuccess { response ->
                 val data = response.getJSONObject("body").getJSONObject("data")
-                val excluded = data.optInt("pending_review_excluded_count") + data.optInt("unclassified_excluded_count")
+                excludedCount = data.optInt("pending_review_excluded_count") + data.optInt("unclassified_excluded_count")
+                netCashFlowValue = data.getString("net_cash_flow").toBigDecimal()
                 summary.removeAllViews()
                 summary.addView(metricRow("收支差额", data.getString("net_cash_flow"), "支出", data.getString("gross_expense")))
                 summary.addView(metricRow("收入", data.getString("ordinary_income"), "退款", data.getString("refunds")))
-                summary.addView(TextView(context).apply {
-                    text = if (excluded > 0) "收支差额不是账户余额 · $excluded 笔待处理交易未计入" else "收支差额不是账户当前余额"
-                    setTextColor(NativeUi.muted)
-                    setPadding(dp(4), dp(6), dp(4), dp(8))
-                })
+                summary.addView(reconciliationNote)
+                updateReconciliationNote()
                 NativeUi.styleTree(summary)
             }.onFailure {
                 summary.removeAllViews()
@@ -107,6 +115,19 @@ class NativeOverviewView(
                 NativeUi.styleTree(timeline)
             }.onFailure { timeline.addView(TextView(context).apply { text = it.message ?: "周期统计加载失败" }) }
         }
+    }
+
+    private fun updateReconciliationNote() {
+        val known = knownBalanceValue
+        val net = netCashFlowValue
+        val base = when {
+            range != "all" || sourceFilter.query().isNotBlank() -> "当前筛选的收支差额不与账户余额直接比较；切换到全部账单与全部来源查看校验"
+            known == null || net == null -> "正在校验全部账单与账户余额…"
+            known.compareTo(net) == 0 -> "全部账单收支差额与账户余额一致"
+            known > net -> "账户余额比收支差额多 ${money((known - net).toPlainString())}：账单开始前可能有这部分余额未计入，或账单不完整"
+            else -> "收支差额比账户余额多 ${money((net - known).toPlainString())}：可能有未记录支出，或账单不完整"
+        }
+        reconciliationNote.text = if (excludedCount > 0) "$base · $excludedCount 笔待处理交易未计入" else base
     }
 
     private fun periodChooser(items: List<Pair<String, String>>, selectedValue: String, select: (String) -> Unit): View =

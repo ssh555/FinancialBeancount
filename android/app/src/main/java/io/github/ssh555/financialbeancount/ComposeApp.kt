@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.math.BigDecimal
 import java.net.URLEncoder
 import java.text.NumberFormat
 import java.time.LocalDate
@@ -167,7 +168,7 @@ private fun ComposeOverview(client: NativeLedgerClient, modifier: Modifier = Mod
                 MetricRow("收支差额", summary.netCashFlow, "支出", summary.expense)
                 MetricRow("收入", summary.income, "退款", summary.refunds)
                 Text(
-                    if (summary.excluded > 0) "收支差额不是账户余额 · ${summary.excluded} 笔待处理交易未计入" else "收支差额不是账户当前余额",
+                    balanceExplanation(range, summary.knownBalance, summary.netCashFlow, summary.excluded),
                     color = LedgerColors.Muted,
                 )
             }
@@ -179,6 +180,18 @@ private fun ComposeOverview(client: NativeLedgerClient, modifier: Modifier = Mod
         if (!loading && timeline.isEmpty()) item { Text("当前范围没有可统计交易", color = LedgerColors.Muted) }
         items(timeline) { item -> TimelineCard(item) }
     }
+}
+
+private fun balanceExplanation(range: String, knownBalance: String, netCashFlow: String, excluded: Int): String {
+    val known = knownBalance.toBigDecimalOrNull() ?: BigDecimal.ZERO
+    val net = netCashFlow.toBigDecimalOrNull() ?: BigDecimal.ZERO
+    val base = when {
+        range != "all" -> "当前周期的收支差额不与账户余额直接比较；切换到全部账单查看校验"
+        known.compareTo(net) == 0 -> "全部账单收支差额与账户余额一致"
+        known > net -> "账户余额比收支差额多 ${money((known - net).toPlainString())}：账单开始前可能有这部分余额未计入，或账单不完整"
+        else -> "收支差额比账户余额多 ${money((net - known).toPlainString())}：可能有未记录支出，或账单不完整"
+    }
+    return if (excluded > 0) "$base · $excluded 笔待处理交易未计入" else base
 }
 
 @Composable

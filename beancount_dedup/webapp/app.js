@@ -162,9 +162,10 @@ async function loadOverview() {
       request(`/api/v1/statistics/timeline?period=${state.timelinePeriod}&${query}`),
       request("/api/v1/statistics/account-balances"),
     ]);
+    const balanceNote = balanceExplanation(data, balances.data);
     const cards = [
       ["账户余额", money(balances.data.known_balance), `${balances.data.as_of || "暂无日期"} · 不随来源筛选`, "featured"],
-      ["收支差额", money(data.net_cash_flow), "收入 + 退款 − 支出（非账户余额）", "featured"],
+      ["收支差额", money(data.net_cash_flow), balanceNote, "featured"],
       ["支出", money(data.gross_expense), `${data.expense_count} 笔`, ""],
       ["收入", money(data.ordinary_income), `${data.income_count} 笔`, ""],
       ["退款", money(data.refunds), `${data.refund_count} 笔`, ""],
@@ -186,6 +187,19 @@ async function loadOverview() {
     if (excluded) toast(`${excluded} 笔待审核或未分类交易未计入收支`);
   } catch (error) { renderError($("#summary-cards"), error); renderError($("#category-list"), error); renderError($("#timeline-list"), error); }
   refreshCounts();
+}
+
+function balanceExplanation(summary, balances) {
+  if (summary.date_from || summary.date_to || state.selectedSources.length) {
+    return "当前筛选的收支差额不与账户余额直接比较；切换到全部账单与全部来源查看校验";
+  }
+  const differenceInCents = Math.round((Number(balances.known_balance) - Number(summary.net_cash_flow)) * 100);
+  const excluded = Number(summary.pending_review_excluded_count || 0) + Number(summary.unclassified_excluded_count || 0);
+  let note;
+  if (differenceInCents === 0) note = "全部账单收支差额与账户余额一致";
+  else if (differenceInCents > 0) note = `账户余额比收支差额多 ${money(differenceInCents / 100)}：账单开始前可能有这部分余额未计入，或账单不完整`;
+  else note = `收支差额比账户余额多 ${money(Math.abs(differenceInCents) / 100)}：可能有未记录支出，或账单不完整`;
+  return excluded ? `${note} · ${excluded} 笔待处理交易未计入` : note;
 }
 
 async function loadTransactions(reset = false) {

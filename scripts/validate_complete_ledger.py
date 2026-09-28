@@ -31,7 +31,8 @@ def validate_database(database: Path) -> dict[str, Any]:
             == summary.ordinary_income + summary.refunds - summary.gross_expense,
             "account_balance_components": Decimal(account_balance["known_balance"])
             == Decimal(account_balance["cash_total"])
-            + Decimal(account_balance["internal_product_total"]),
+            + Decimal(account_balance["internal_product_total"])
+            + Decimal(account_balance.get("snapshot_total", "0")),
         }
         report = {
             "success": all(checks.values()),

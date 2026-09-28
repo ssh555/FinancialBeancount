@@ -230,7 +230,8 @@ def test_native_android_overview_uses_async_core_client() -> None:
     assert "minHeight = dp(48)" in overview
     assert 'private var range = "all"' in overview
     assert 'metricRow("收支差额", data.getString("net_cash_flow")' in overview
-    assert "收支差额不是账户当前余额" in overview
+    assert "全部账单收支差额与账户余额一致" in overview
+    assert "账单开始前可能有这部分余额未计入，或账单不完整" in overview
 
 
 def test_native_android_transactions_are_paginated_and_searchable() -> None:

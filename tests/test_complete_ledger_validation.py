@@ -20,6 +20,13 @@ def test_complete_ledger_validation_checks_period_conservation(tmp_path: Path) -
                 tx_type=TransactionType.EXPENSE,
             )
         )
+        store.record_account_balance_snapshot(
+            "wechat",
+            "微信零钱",
+            "5.31",
+            date(2026, 1, 1),
+            created_by="test",
+        )
         store.add_canonical(
             CanonicalTransaction(
                 transaction_time=None,
@@ -40,4 +47,4 @@ def test_complete_ledger_validation_checks_period_conservation(tmp_path: Path) -
     assert report["checks"]["gross_expense_matches_years"] is True
     assert report["checks"]["ordinary_income_matches_years"] is True
     assert report["checks"]["account_balance_components"] is True
-    assert report["account_balance"]["known_balance"] == "0"
+    assert report["account_balance"]["known_balance"] == "5.31"
