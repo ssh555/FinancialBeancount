@@ -118,6 +118,20 @@ def create_legacy_ledger(path: Path, version: int) -> None:
                     ON canonical_events(canonical_id, created_at);
                 """
             )
+        if version >= 10:
+            connection.executescript(
+                """
+                CREATE TABLE schema_migrations (
+                    migration_id TEXT PRIMARY KEY,
+                    from_version INTEGER NOT NULL,
+                    to_version INTEGER NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    backup_path TEXT NOT NULL,
+                    status TEXT NOT NULL
+                );
+                """
+            )
         connection.commit()
     finally:
         connection.close()
@@ -180,6 +194,69 @@ def test_schema_9_upgrade_creates_one_migration_record(tmp_path: Path) -> None:
         ).fetchall()
 
     assert [tuple(row) for row in rows] == [(9, 10), (10, 11)]
+
+
+def test_schema_10_upgrade_is_atomic_and_preserves_all_existing_rows(tmp_path: Path) -> None:
+    database = tmp_path / "ledger.sqlite3"
+    create_legacy_ledger(database, 10)
+
+    with LedgerStore(database) as store:
+        version = store.connection.execute(
+            "SELECT value FROM schema_meta WHERE key='schema_version'"
+        ).fetchone()[0]
+        migration = store.connection.execute(
+            "SELECT from_version, to_version, status FROM schema_migrations"
+        ).fetchone()
+        preserved = store.connection.execute(
+            "SELECT merchant, notes FROM canonical_transactions WHERE canonical_id='legacy-entry'"
+        ).fetchone()
+        snapshot_table = store.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='account_balance_snapshots'"
+        ).fetchone()
+
+    assert version == "11"
+    assert tuple(migration) == (10, 11, "completed")
+    assert tuple(preserved) == ("历史商户", "必须保留")
+    assert snapshot_table is not None
+
+
+def test_schema_10_upgrade_recovers_from_partially_created_v11_objects(tmp_path: Path) -> None:
+    database = tmp_path / "ledger.sqlite3"
+    create_legacy_ledger(database, 10)
+    with sqlite3.connect(database) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE account_balance_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                source_account TEXT NOT NULL,
+                balance TEXT NOT NULL,
+                balance_kind TEXT NOT NULL,
+                as_of TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                note TEXT NOT NULL
+            );
+            CREATE INDEX idx_account_balance_snapshots_latest
+                ON account_balance_snapshots(source, source_account, balance_kind,
+                                             as_of DESC, created_at DESC);
+            """
+        )
+
+    with LedgerStore(database) as store:
+        version = store.connection.execute(
+            "SELECT value FROM schema_meta WHERE key='schema_version'"
+        ).fetchone()[0]
+        preserved = store.connection.execute(
+            "SELECT notes FROM canonical_transactions WHERE canonical_id='legacy-entry'"
+        ).fetchone()[0]
+        migrations = store.connection.execute(
+            "SELECT from_version, to_version, status FROM schema_migrations"
+        ).fetchall()
+
+    assert version == "11"
+    assert preserved == "必须保留"
+    assert [tuple(row) for row in migrations] == [(10, 11, "completed")]
 
 
 def test_failed_migration_rolls_back_and_keeps_restorable_backup(

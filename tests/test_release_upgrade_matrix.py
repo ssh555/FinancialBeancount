@@ -7,7 +7,7 @@ import pytest
 from beancount_dedup.ledger_store import SCHEMA_VERSION, LedgerMigrationError, LedgerStore
 from beancount_dedup.update_helper import apply_prepared_application, rollback_applied_update
 
-SUPPORTED_RELEASE_SCHEMAS = (8, 9, SCHEMA_VERSION)
+SUPPORTED_RELEASE_SCHEMAS = (8, 9, 10, SCHEMA_VERSION)
 
 
 def _create_release_ledger(path: Path, schema_version: int) -> None:
@@ -57,6 +57,20 @@ def _create_release_ledger(path: Path, schema_version: int) -> None:
                     event_id TEXT PRIMARY KEY, canonical_id TEXT NOT NULL,
                     action TEXT NOT NULL, before_json TEXT NOT NULL,
                     after_json TEXT NOT NULL, actor TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+                """
+            )
+        if schema_version >= 10:
+            connection.executescript(
+                """
+                CREATE TABLE schema_migrations (
+                    migration_id TEXT PRIMARY KEY,
+                    from_version INTEGER NOT NULL,
+                    to_version INTEGER NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    backup_path TEXT NOT NULL,
+                    status TEXT NOT NULL
                 );
                 """
             )

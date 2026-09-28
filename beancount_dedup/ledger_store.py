@@ -335,9 +335,13 @@ class LedgerStore:
         )
 
     def _migrate_10_to_11(self) -> None:
-        self.connection.executescript(
+        # Do not use ``executescript`` inside the migration transaction. The
+        # sqlite3 implementation bundled on Android commits before executing a
+        # script, which breaks atomic rollback and caused real v10 ledgers to
+        # become unavailable after an APK upgrade.
+        self.connection.execute(
             """
-            CREATE TABLE account_balance_snapshots (
+            CREATE TABLE IF NOT EXISTS account_balance_snapshots (
                 snapshot_id TEXT PRIMARY KEY,
                 source TEXT NOT NULL,
                 source_account TEXT NOT NULL,
@@ -347,10 +351,14 @@ class LedgerStore:
                 created_at TEXT NOT NULL,
                 created_by TEXT NOT NULL,
                 note TEXT NOT NULL
-            );
-            CREATE INDEX idx_account_balance_snapshots_latest
+            )
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_account_balance_snapshots_latest
                 ON account_balance_snapshots(source, source_account, balance_kind,
-                                             as_of DESC, created_at DESC);
+                                             as_of DESC, created_at DESC)
             """
         )
 
