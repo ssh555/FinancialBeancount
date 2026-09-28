@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
     override fun restorePortableArchive() = archivePicker.launch(arrayOf("application/zip", "application/octet-stream"))
 
     override fun exportTransactions(format: String) {
+        nativeDataView?.setBusy(true, "正在生成 ${format.uppercase()} 交易导出…")
         thread(name = "native-transaction-export") {
             try {
                 val database = getDatabasePath("ledger.sqlite3").absolutePath
@@ -75,12 +76,13 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
                     ),
                 )
             } catch (error: Exception) {
-                nativeDataView?.post { nativeDataView?.showProgress(error.message ?: "交易导出失败") }
+                nativeDataView?.post { nativeDataView?.setBusy(false, error.message ?: "交易导出失败") }
             }
         }
     }
 
     override fun exportPortableArchive() {
+        nativeDataView?.setBusy(true, "正在生成完整账本归档…")
         thread(name = "native-archive-export") {
             try {
                 val database = getDatabasePath("ledger.sqlite3").absolutePath
@@ -89,7 +91,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
                     .getJSONObject("body").getJSONObject("data")
                 beginExport(PendingExport(data.getString("filename"), "application/zip", data.getString("content_base64")))
             } catch (error: Exception) {
-                nativeDataView?.post { nativeDataView?.showProgress(error.message ?: "完整归档导出失败") }
+                nativeDataView?.post { nativeDataView?.setBusy(false, error.message ?: "完整归档导出失败") }
             }
         }
     }
@@ -147,6 +149,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
         if (pendingExport != null) error("已有文件正在等待保存")
         pendingExport = export
         runOnUiThread {
+            nativeDataView?.setBusy(false, "导出已生成，请选择保存位置")
             exportPicker.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = export.mimeType
@@ -172,6 +175,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
     }
 
     private fun writeExport(uri: Uri, export: PendingExport) {
+        nativeDataView?.setBusy(true, "正在写入 ${export.filename}…")
         thread(name = "ledger-export-writer") {
             try {
                 val bytes = Base64.decode(export.contentBase64, Base64.DEFAULT)
@@ -187,6 +191,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
     }
 
     private fun restorePortableArchive(uri: Uri) {
+        nativeDataView?.setBusy(true, "正在校验并恢复完整账本…")
         thread(name = "ledger-archive-restorer") {
             try {
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -198,6 +203,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
                     database,
                     Base64.encodeToString(bytes, Base64.NO_WRAP),
                 )
+                nativeClient.invalidateCache()
                 reportArchiveImportResult(true, "完整账本已恢复")
             } catch (error: Exception) {
                 reportArchiveImportResult(false, error.message ?: "完整归档恢复失败")
@@ -206,14 +212,15 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
     }
 
     private fun reportArchiveImportResult(@Suppress("UNUSED_PARAMETER") success: Boolean, message: String) {
-        nativeDataView?.post { nativeDataView?.showProgress(message) }
+        nativeDataView?.post { nativeDataView?.setBusy(false, message) }
     }
 
     private fun reportExportResult(@Suppress("UNUSED_PARAMETER") success: Boolean, message: String) {
-        nativeDataView?.post { nativeDataView?.showProgress(message) }
+        nativeDataView?.post { nativeDataView?.setBusy(false, message) }
     }
 
     private fun importSelectedUris(uris: List<Uri>) {
+        nativeDataView?.setBusy(true, "正在读取所选账单…")
         thread(name = "statement-file-reader") {
             val documents = uris.mapNotNull { uri ->
                 DocumentFile.fromSingleUri(this, uri)?.let { SelectedDocument(it, it.name ?: "未命名文件") }
@@ -223,6 +230,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
     }
 
     private fun importSelectedFolder(uri: Uri) {
+        nativeDataView?.setBusy(true, "正在扫描文件夹…")
         thread(name = "statement-folder-reader") {
             val root = DocumentFile.fromTreeUri(this, uri)
             val documents = if (root == null) emptyList() else collectFiles(root, "")
@@ -277,6 +285,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
         }
         nativeDataView?.post {
             nativeDataView?.acceptFiles(nativeFiles, nativeSkipped)
+            nativeDataView?.setBusy(false, "已加入 ${nativeFiles.size} 个文件，跳过 ${nativeSkipped.size} 个")
         }
     }
 

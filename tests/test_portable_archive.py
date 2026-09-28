@@ -49,6 +49,14 @@ def populated_store(path):
 
 def test_portable_archive_round_trip_preserves_raw_canonical_and_audit(tmp_path):
     source, result, item = populated_store(tmp_path / "source.sqlite3")
+    source.record_account_balance_snapshot(
+        "wechat",
+        "微信零钱",
+        "40.80",
+        date(2026, 9, 21),
+        created_by="local-user",
+        note="verified cutoff balance",
+    )
     source_canonical = source.find_canonical_for_raw(result.raw_transaction.raw_id)
     assert source_canonical is not None
     source.record_canonical_event(
@@ -83,6 +91,10 @@ def test_portable_archive_round_trip_preserves_raw_canonical_and_audit(tmp_path)
         ]
         assert events[0].actor == "local-user"
         assert manifest.tables["raw_transactions"]["rows"] == 1
+        snapshots = restored.list_latest_account_balance_snapshots()
+        assert len(snapshots) == 1
+        assert str(snapshots[0].balance) == "40.80"
+        assert snapshots[0].note == "verified cutoff balance"
     finally:
         restored.close()
 
@@ -151,7 +163,9 @@ def test_import_accepts_legacy_v1_schema_9_archive(tmp_path):
     manifest["format_version"] = 1
     manifest["schema_version"] = 9
     manifest["tables"].pop("schema_migrations")
+    manifest["tables"].pop("account_balance_snapshots")
     entries.pop("data/schema_migrations.jsonl")
+    entries.pop("data/account_balance_snapshots.jsonl")
     entries["manifest.json"] = json.dumps(manifest).encode("utf-8")
     with zipfile.ZipFile(legacy, "w") as target:
         for name, payload in entries.items():

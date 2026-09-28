@@ -108,3 +108,47 @@ def test_account_balance_uses_latest_cash_and_internal_products_only(tmp_path: P
     assert report["as_of"] == "2026-09-21"
     assert len(report["internal_products"]) == 2
     assert "外部基金平台" in report["scope_note"]
+
+
+def test_verified_wallet_snapshots_are_auditable_and_included_in_known_balance(
+    tmp_path: Path,
+) -> None:
+    with LedgerStore(tmp_path / "ledger.sqlite3") as store:
+        store.record_account_balance_snapshot(
+            "wechat",
+            "微信零钱",
+            "39.00",
+            date(2026, 9, 20),
+            created_by="local-user",
+            note="previous check",
+        )
+        store.record_account_balance_snapshot(
+            "wechat",
+            "微信零钱",
+            "40.80",
+            date(2026, 9, 21),
+            created_by="local-user",
+            note="ledger cutoff verification",
+        )
+        store.record_account_balance_snapshot(
+            "alipay",
+            "支付宝余额",
+            "0.21",
+            date(2026, 9, 21),
+            created_by="local-user",
+            note="ledger cutoff verification",
+        )
+
+        report = AccountBalanceService(store).summarize()
+        latest = store.list_latest_account_balance_snapshots()
+
+    assert report["snapshot_total"] == "41.01"
+    assert report["known_balance"] == "41.01"
+    assert {item["name"]: item["balance"] for item in report["snapshot_accounts"]} == {
+        "支付宝余额": "0.21",
+        "微信零钱": "40.80",
+    }
+    assert len(latest) == 2
+    assert next(item for item in latest if item.source == "wechat").note == (
+        "ledger cutoff verification"
+    )

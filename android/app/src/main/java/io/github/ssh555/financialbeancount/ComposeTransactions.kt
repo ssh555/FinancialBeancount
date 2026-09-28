@@ -284,4 +284,8 @@ private fun JSONObject.toTransaction() = TransactionRow(
     notes = optString("notes"),
 )
 
-private fun moneyText(value: String) = runCatching { NumberFormat.getCurrencyInstance(Locale.CHINA).format(value.toBigDecimal()) }.getOrElse { "¥0.00" }
+private fun moneyText(value: String) = runCatching {
+    val amount = value.toBigDecimal()
+    val formatted = NumberFormat.getCurrencyInstance(Locale.CHINA).format(amount)
+    if (amount.signum() > 0) "+$formatted" else formatted
+}.getOrElse { "¥0.00" }

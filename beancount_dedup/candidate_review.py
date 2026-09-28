@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -60,17 +61,138 @@ class CandidateReviewService:
         confirmed = 0
         for candidate in self.list_groups("pending"):
             codes = {item.code for item in candidate.candidate.evidence}
+            exact_payment = "direction_exact" in codes and "bank_name_exact" in codes
+            exact_refund_credit = "refund_credit_direction" in codes
             if (
                 candidate.candidate.is_ambiguous
                 or candidate.conflicts
                 or "datetime_exact" not in codes
                 or "amount_exact" not in codes
-                or "direction_exact" not in codes
-                or "bank_name_exact" not in codes
+                or not (exact_payment or exact_refund_credit)
             ):
                 continue
             self.confirm(candidate.candidate.candidate_id, actor)
             confirmed += 1
+        return confirmed
+
+    def confirm_unique_statement_matches(self, actor: str) -> int:
+        """Confirm a unique same-day match when the bank export has no time."""
+
+        confirmed = 0
+        for group in self.list_groups("pending"):
+            codes = {item.code for item in group.candidate.evidence}
+            direction_supported = bool(
+                {"direction_exact", "refund_credit_direction"} & codes
+            )
+            if (
+                group.candidate.is_ambiguous
+                or group.conflicts
+                or "amount_exact" not in codes
+                or "booking_date_exact" not in codes
+                or "bank_name_exact" not in codes
+                or "bank_time_unavailable" not in codes
+                or not direction_supported
+            ):
+                continue
+            self.confirm(group.candidate.candidate_id, actor)
+            confirmed += 1
+        return confirmed
+
+    def confirm_ordered_statement_matches(self, actor: str) -> int:
+        """Resolve equal-sized ambiguous groups using preserved statement order."""
+
+        pending = ConservativeMatcher(self.store).list_candidates("pending")
+        by_payment: dict[str, list[MatchCandidate]] = defaultdict(list)
+        by_bank: dict[str, list[MatchCandidate]] = defaultdict(list)
+        for candidate in pending:
+            by_payment[candidate.payment_raw_id].append(candidate)
+            by_bank[candidate.bank_raw_id].append(candidate)
+
+        seen_payments: set[str] = set()
+        selected_groups: list[list[str]] = []
+        for initial in sorted(by_payment):
+            if initial in seen_payments:
+                continue
+            payment_ids: set[str] = set()
+            bank_ids: set[str] = set()
+            payment_queue = [initial]
+            while payment_queue:
+                payment_id = payment_queue.pop()
+                if payment_id in payment_ids:
+                    continue
+                payment_ids.add(payment_id)
+                for candidate in by_payment[payment_id]:
+                    if candidate.bank_raw_id in bank_ids:
+                        continue
+                    bank_ids.add(candidate.bank_raw_id)
+                    payment_queue.extend(
+                        item.payment_raw_id for item in by_bank[candidate.bank_raw_id]
+                    )
+            seen_payments.update(payment_ids)
+            if len(payment_ids) != len(bank_ids) or len(payment_ids) < 2:
+                continue
+
+            payments = [self.store.get_raw(raw_id) for raw_id in payment_ids]
+            banks = [self.store.get_raw(raw_id) for raw_id in bank_ids]
+            if any(item is None for item in (*payments, *banks)):
+                continue
+            ordered_payments = sorted(
+                payments,
+                key=lambda item: (
+                    item.booking_date or date.min,
+                    item.transaction_time or datetime.min,
+                    item.raw_id,
+                ),
+            )
+            ordered_banks = sorted(
+                banks,
+                key=lambda item: (
+                    item.booking_date or date.min,
+                    item.raw_row_number if item.raw_row_number is not None else -1,
+                    item.raw_id,
+                ),
+            )
+            candidate_ids = []
+            valid = True
+            for payment, bank in zip(ordered_payments, ordered_banks):
+                candidate = next(
+                    (
+                        item
+                        for item in by_payment[payment.raw_id]
+                        if item.bank_raw_id == bank.raw_id
+                    ),
+                    None,
+                )
+                if candidate is None:
+                    valid = False
+                    break
+                codes = {item.code for item in candidate.evidence}
+                if not (
+                    "amount_exact" in codes
+                    and "booking_date_exact" in codes
+                    and "bank_name_exact" in codes
+                    and "bank_time_unavailable" in codes
+                    and {"direction_exact", "refund_credit_direction"} & codes
+                    and payment.transaction_time is not None
+                    and bank.raw_row_number is not None
+                ):
+                    valid = False
+                    break
+                candidate_ids.append(candidate.candidate_id)
+            if valid:
+                selected_groups.append(candidate_ids)
+
+        confirmed = 0
+        for candidate_ids in selected_groups:
+            for candidate_id in candidate_ids:
+                if self.get_group(candidate_id).candidate.status != "pending":
+                    continue
+                self.confirm(
+                    candidate_id,
+                    actor,
+                    changes={"notes": "按平台交易时间与银行流水行序确定性匹配"},
+                )
+                confirmed += 1
         return confirmed
 
     def reject(self, candidate_id: str, actor: str) -> CandidateReviewEvent:
@@ -232,7 +354,10 @@ class CandidateReviewService:
             "payment_channel": source_id_value(payment.source),
             "funding_account": group.bank.source_account,
             "tx_type": (
-                TransactionType.EXPENSE
+                TransactionType.REFUND
+                if "refund_credit_direction"
+                in {item.code for item in group.candidate.evidence}
+                else TransactionType.EXPENSE
                 if payment.direction == "expense" or payment.amount < 0
                 else TransactionType.INCOME
             ),

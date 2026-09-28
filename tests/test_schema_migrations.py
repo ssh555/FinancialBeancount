@@ -153,7 +153,11 @@ def test_schema_8_upgrade_is_backed_up_recorded_and_preserves_data(tmp_path: Pat
 
     assert version == str(SCHEMA_VERSION)
     assert merchant == "历史商户"
-    assert [tuple(row) for row in migrations] == [(8, 9, "completed"), (9, 10, "completed")]
+    assert [tuple(row) for row in migrations] == [
+        (8, 9, "completed"),
+        (9, 10, "completed"),
+        (10, 11, "completed"),
+    ]
     assert preserved == {
         "raw_transactions": 1,
         "canonical_transactions": 1,
@@ -175,7 +179,7 @@ def test_schema_9_upgrade_creates_one_migration_record(tmp_path: Path) -> None:
             "SELECT from_version, to_version FROM schema_migrations"
         ).fetchall()
 
-    assert [tuple(row) for row in rows] == [(9, 10)]
+    assert [tuple(row) for row in rows] == [(9, 10), (10, 11)]
 
 
 def test_failed_migration_rolls_back_and_keeps_restorable_backup(

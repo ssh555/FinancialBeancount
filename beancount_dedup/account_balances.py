@@ -14,9 +14,19 @@ class BalanceItem:
     name: str
     balance: Decimal
     as_of: str
+    source: str | None = None
+    balance_kind: str = "cash"
 
     def to_dict(self) -> dict[str, str]:
-        return {"name": self.name, "balance": str(self.balance), "as_of": self.as_of}
+        result = {
+            "name": self.name,
+            "balance": str(self.balance),
+            "as_of": self.as_of,
+            "balance_kind": self.balance_kind,
+        }
+        if self.source is not None:
+            result["source"] = self.source
+        return result
 
 
 class AccountBalanceService:
@@ -28,18 +38,40 @@ class AccountBalanceService:
     def summarize(self) -> dict[str, Any]:
         cash_accounts = self._latest_bank_cash()
         internal_products = self._internal_products()
+        snapshot_accounts = self._snapshot_accounts()
         cash_total = sum((item.balance for item in cash_accounts), Decimal("0"))
         product_total = sum((item.balance for item in internal_products), Decimal("0"))
-        dates = [item.as_of for item in (*cash_accounts, *internal_products) if item.as_of]
+        snapshot_total = sum(
+            (item.balance for item in snapshot_accounts if item.balance_kind != "credit_limit"),
+            Decimal("0"),
+        )
+        dates = [
+            item.as_of for item in (*cash_accounts, *internal_products, *snapshot_accounts)
+            if item.as_of
+        ]
         return {
-            "known_balance": str(cash_total + product_total),
+            "known_balance": str(cash_total + product_total + snapshot_total),
             "cash_total": str(cash_total),
             "internal_product_total": str(product_total),
+            "snapshot_total": str(snapshot_total),
             "as_of": max(dates) if dates else None,
             "cash_accounts": [item.to_dict() for item in cash_accounts],
             "internal_products": [item.to_dict() for item in internal_products],
-            "scope_note": "仅汇总带余额的银行活期账户和可明确识别的银行内部产品，不含外部基金平台及无法获得余额的支付账户。",
+            "snapshot_accounts": [item.to_dict() for item in snapshot_accounts],
+            "scope_note": "汇总带余额的银行账户、可识别的银行内部产品，以及经用户核验的支付账户余额快照；不含余额未知的外部基金平台。",
         }
+
+    def _snapshot_accounts(self) -> tuple[BalanceItem, ...]:
+        return tuple(
+            BalanceItem(
+                snapshot.source_account,
+                snapshot.balance,
+                snapshot.as_of.isoformat(),
+                snapshot.source,
+                snapshot.balance_kind,
+            )
+            for snapshot in self.store.list_latest_account_balance_snapshots()
+        )
 
     def _latest_bank_cash(self) -> tuple[BalanceItem, ...]:
         rows = self.store.connection.execute(

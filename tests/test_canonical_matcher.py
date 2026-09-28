@@ -1,5 +1,6 @@
 """Tests for conservative cross-platform candidate generation."""
 
+from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -222,6 +223,41 @@ def test_same_platform_records_are_never_cross_platform_candidates(store):
     )
 
     assert ConservativeMatcher(store).generate_candidates() == []
+
+
+def test_exact_platform_refund_and_bank_credit_create_candidate(store):
+    payment = raw(
+        Platform.ALIPAY,
+        "refund",
+        when=datetime(2026, 9, 19, 10, 30, 49),
+        merchant="高德顺风车",
+        payment_method="招商银行储蓄卡",
+        suffix="4000",
+        amount="29.71",
+    )
+    payment = replace(
+        payment,
+        direction="neutral",
+        description="退款-高德顺风车订单",
+        status="退款成功",
+    )
+    bank = raw(
+        Platform.BANK,
+        "bank-refund",
+        when=datetime(2026, 9, 19, 10, 30, 50),
+        merchant="支付宝-高德",
+        payment_method="招商银行 快捷支付",
+        suffix="6357",
+        amount="29.71",
+    )
+    bank = replace(bank, direction="income", description="退款")
+    add(store, payment, bank)
+
+    candidates = ConservativeMatcher(store).generate_candidates()
+
+    assert len(candidates) == 1
+    assert "refund_credit_direction" in {item.code for item in candidates[0].evidence}
+    assert candidates[0].is_ambiguous is False
 
 
 def test_already_linked_raw_is_excluded_from_candidate_generation(store):

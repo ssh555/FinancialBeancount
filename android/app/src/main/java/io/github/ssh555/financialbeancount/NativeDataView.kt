@@ -12,6 +12,7 @@ import android.widget.ArrayAdapter
 import android.widget.TextView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -30,7 +31,9 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
 
     private val queue = LinearLayout(context)
     private val progress = TextView(context)
+    private val progressIndicator = LinearProgressIndicator(context)
     private val importButton = Button(context)
+    private val actionCards = mutableListOf<MaterialCardView>()
     private val items = mutableListOf<QueueItem>()
     private var formats = emptyList<ImportFormat>()
 
@@ -49,6 +52,9 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         addView(importButton)
         progress.gravity = Gravity.CENTER
         progress.setPadding(0, dp(10), 0, dp(10))
+        progressIndicator.isIndeterminate = true
+        progressIndicator.visibility = GONE
+        addView(progressIndicator, LayoutParams(LayoutParams.MATCH_PARENT, dp(4)))
         addView(progress)
         addView(action("备份与恢复") { showArchiveMenu() })
         addView(action("导出交易") { showExportMenu() })
@@ -120,6 +126,13 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
 
     fun showProgress(message: String) {
         progress.text = message
+    }
+
+    fun setBusy(busy: Boolean, message: String) {
+        progressIndicator.visibility = if (busy) VISIBLE else GONE
+        progress.text = message
+        actionCards.forEach { card -> card.isEnabled = !busy; card.isClickable = !busy }
+        importButton.isEnabled = !busy && items.any { it.status == "等待导入" }
     }
 
     private fun showImportMenu() {
@@ -219,8 +232,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
     private fun importNext(index: Int, succeeded: Int, failed: Int) {
         val selected = items.filter { it.status == "等待导入" }
         if (index >= selected.size) {
-            showProgress("导入完成：成功 $succeeded 个，未处理 $failed 个")
-            importButton.isEnabled = items.any { it.status == "等待导入" }
+            setBusy(false, "导入完成：成功 $succeeded 个，未处理 $failed 个")
             return
         }
         val item = selected[index]
@@ -228,7 +240,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
             item.status = "未处理"; item.message = "请填写来源账户"; showQueue(items)
             importNext(index + 1, succeeded, failed + 1); return
         }
-        item.status = "正在导入"; showQueue(items); showProgress("正在处理 ${index + 1}/${selected.size}：${item.relativePath}")
+        item.status = "正在导入"; showQueue(items); setBusy(true, "正在处理 ${index + 1}/${selected.size}：${item.relativePath}")
         val body = JSONObject().put("format_id", item.formatId).put("source_account", item.sourceAccount)
             .put("filename", item.relativePath.substringAfterLast('/')).put("content_base64", item.contentBase64)
         client.request("POST", "/api/v1/imports", body) { result ->
@@ -258,6 +270,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
     }
 
     private fun action(label: String, click: () -> Unit) = MaterialCardView(context).apply {
+        actionCards += this
         val descriptions = mapOf(
             "选择一个文件" to "导入一份微信、支付宝或银行账单",
             "选择多个文件" to "一次加入多份账单并逐项查看结果",

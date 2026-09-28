@@ -3,9 +3,10 @@
 import csv
 from pathlib import Path
 
-import pytest
+from beancount_dedup.builtin_statement_formats import _disambiguate_repeated_bank_rows
 from beancount_dedup.ledger_store import LedgerStore
 from beancount_dedup.models import Platform
+import pytest
 from beancount_dedup.statement_importer import (
     StatementImporter,
     StatementImportError,
@@ -284,3 +285,43 @@ def test_wechat_slash_direction_is_a_neutral_transfer():
 
     assert str(amount) == "100.00"
     assert direction == "neutral"
+
+
+def test_identical_cmb_rows_receive_stable_occurrence_identity():
+    row = {
+        "记账日期": "2026-06-02",
+        "货币": "CNY",
+        "交易金额": "24.80",
+        "联机余额": "24.80",
+        "交易摘要": "朝朝宝转出",
+        "对手信息": "代销理财快赎",
+    }
+    first_export = [
+        _cmb_raw(
+            row,
+            row_number=190006 + index,
+            source_account="招商银行",
+            source_file="partial.pdf",
+            source_file_hash="partial-hash",
+        )
+        for index in range(2)
+    ]
+    overlap_export = [
+        _cmb_raw(
+            row,
+            row_number=450 + index,
+            source_account="招商银行",
+            source_file="annual.pdf",
+            source_file_hash="annual-hash",
+        )
+        for index in range(2)
+    ]
+
+    first = _disambiguate_repeated_bank_rows(first_export)
+    overlap = _disambiguate_repeated_bank_rows(overlap_export)
+
+    assert first[0].deduplication_key != first[1].deduplication_key
+    assert [item.deduplication_key for item in first] == [
+        item.deduplication_key for item in overlap
+    ]
+    assert first[1].original_row["_statement_occurrence"] == 2

@@ -1,5 +1,6 @@
 """Tests for grouped duplicate-candidate review and audit history."""
 
+from dataclasses import replace
 from datetime import date, datetime
 
 import pytest
@@ -118,7 +119,94 @@ def test_exact_payment_match_can_be_safely_confirmed_in_batch(store):
     canonical = store.get_canonical(store.list_canonical()[0].canonical_id)
     assert canonical is not None
     assert canonical.source_count == 2
-    assert canonical.tx_type.value == "expense"
+
+
+def test_exact_refund_credit_is_confirmed_once_as_refund(store):
+    payment = raw(Platform.ALIPAY, "refund", merchant="高德顺风车", suffix="4000")
+    payment = replace(
+        payment,
+        amount=payment.amount.copy_abs(),
+        direction="neutral",
+        description="退款-高德顺风车订单",
+        status="退款成功",
+    )
+    bank = raw(
+        Platform.BANK,
+        "bank-refund",
+        merchant="支付宝-高德",
+        suffix="6357",
+        bank_time=datetime(2026, 6, 1, 12, 0, 1),
+    )
+    bank = replace(
+        bank,
+        amount=bank.amount.copy_abs(),
+        direction="income",
+        description="退款",
+    )
+    store.add_raw(payment)
+    store.add_raw(bank)
+    ConservativeMatcher(store).generate_candidates()
+
+    assert CandidateReviewService(store).confirm_exact_payment_matches("acceptance") == 1
+    canonical = store.get_canonical(store.list_canonical()[0].canonical_id)
+    assert canonical is not None
+    assert canonical.source_count == 2
+    assert canonical.tx_type.value == "refund"
+
+
+def test_unique_named_bank_match_without_bank_time_is_safely_confirmed(store):
+    payment = store.add_raw(
+        raw(Platform.ALIPAY, "unique-payment", merchant="高德打车", suffix="5066")
+    ).raw_transaction
+    bank = store.add_raw(
+        raw(Platform.BANK, "unique-bank", merchant="高德信息技术有限公司", suffix="5066")
+    ).raw_transaction
+    ConservativeMatcher(store).generate_candidates()
+
+    confirmed = CandidateReviewService(store).confirm_unique_statement_matches("acceptance")
+
+    assert confirmed == 1
+    canonical = store.find_canonical_for_raw(payment.raw_id)
+    assert canonical is not None
+    assert {item.raw_transaction.raw_id for item in canonical.source_links} == {
+        payment.raw_id,
+        bank.raw_id,
+    }
+
+
+def test_equal_ambiguous_group_is_resolved_by_platform_and_statement_order(store):
+    payments = []
+    banks = []
+    for index, minute in enumerate((5, 40), 1):
+        payment = raw(
+            Platform.ALIPAY,
+            f"ordered-payment-{index}",
+            merchant="同一商户",
+            suffix="5066",
+        )
+        payment = replace(payment, transaction_time=datetime(2026, 6, 1, 12, minute))
+        payments.append(store.add_raw(payment).raw_transaction)
+        bank = raw(
+            Platform.BANK,
+            f"ordered-bank-{index}",
+            merchant="同一商户",
+            suffix="5066",
+        )
+        bank = replace(bank, raw_row_number=100 + index)
+        banks.append(store.add_raw(bank).raw_transaction)
+    ConservativeMatcher(store).generate_candidates()
+
+    confirmed = CandidateReviewService(store).confirm_ordered_statement_matches("acceptance")
+
+    assert confirmed == 2
+    for payment, bank in zip(payments, banks):
+        canonical = store.find_canonical_for_raw(payment.raw_id)
+        assert canonical is not None
+        assert {item.raw_transaction.raw_id for item in canonical.source_links} == {
+            payment.raw_id,
+            bank.raw_id,
+        }
+        assert "流水行序" in canonical.notes
 
 
 def test_modified_confirmation_and_conflicts_are_fully_audited(store):

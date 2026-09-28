@@ -3,9 +3,9 @@
 from datetime import date
 
 import pytest
-from beancount_dedup.ledger_models import CanonicalTransaction
+from beancount_dedup.ledger_models import CanonicalTransaction, RawTransaction
 from beancount_dedup.ledger_store import LedgerStore
-from beancount_dedup.models import TransactionType
+from beancount_dedup.models import Platform, TransactionType
 from beancount_dedup.transaction_classification import TransactionClassificationService
 
 
@@ -53,6 +53,53 @@ def test_generic_external_transfer_is_not_automatically_classified(store):
     store.add_canonical(transaction("转账给张三"))
 
     assert TransactionClassificationService(store).generate_candidates() == []
+
+
+def test_internal_fund_purchase_is_not_consumption_but_external_fund_stays_expense(store):
+    internal = transaction("本人")
+    internal.add_source(
+        RawTransaction(
+            source=Platform.BANK,
+            source_account="工商银行",
+            booking_date=date(2026, 9, 1),
+            amount="-1802.05",
+            direction="expense",
+            merchant="本人",
+            counterparty="本人",
+            description="基金购买",
+            original_row={"kind": "internal"},
+        ),
+        confidence="1",
+        reasons=["statement"],
+        matcher_version="test",
+    )
+    external = transaction("上海天天基金销售有限公司", amount="-6000")
+    external.add_source(
+        RawTransaction(
+            source=Platform.BANK,
+            source_account="工商银行",
+            booking_date=date(2026, 9, 7),
+            amount="-6000",
+            direction="expense",
+            merchant="上海天天基金销售有限公司",
+            counterparty="上海天天基金销售有限公司",
+            description="天天9074959683",
+            original_row={"kind": "external"},
+        ),
+        confidence="1",
+        reasons=["statement"],
+        matcher_version="test",
+    )
+    for item in (*internal.source_links, *external.source_links):
+        store.add_raw(item.raw_transaction)
+    store.add_canonical(internal)
+    store.add_canonical(external)
+
+    candidates = TransactionClassificationService(store).generate_candidates()
+
+    assert len(candidates) == 1
+    assert candidates[0].canonical_id == internal.canonical_id
+    assert candidates[0].proposed_category == "银行内部理财转移"
 
 
 def test_confirm_updates_type_and_category_with_audit(store):

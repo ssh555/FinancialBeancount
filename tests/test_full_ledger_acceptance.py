@@ -1,6 +1,9 @@
 from pathlib import Path
 
-from scripts.acceptance_full_ledger import discover_statements, run_acceptance
+from datetime import date
+from decimal import Decimal
+
+from scripts.acceptance_full_ledger import BalanceSnapshotInput, discover_statements, run_acceptance
 
 
 def _alipay_statement(path: Path) -> None:
@@ -31,9 +34,23 @@ def test_complete_acceptance_exports_one_restorable_mobile_archive(tmp_path: Pat
     _alipay_statement(root / "支付宝" / "账单.csv")
     output = tmp_path / "acceptance"
 
-    report = run_acceptance(root, output)
+    report = run_acceptance(
+        root,
+        output,
+        (
+            BalanceSnapshotInput(
+                "wechat",
+                "微信零钱",
+                Decimal("40.80"),
+                date(2026, 9, 21),
+                "verified cutoff balance",
+            ),
+        ),
+    )
 
     assert report["success"] is True
+    assert report["account_balance"]["snapshot_total"] == "40.80"
+    assert report["table_counts"]["account_balance_snapshots"] == 1
     assert report["discovered_count"] == 1
     assert report["unprocessed_count"] == 0
     assert report["table_counts"] == report["restored_table_counts"]

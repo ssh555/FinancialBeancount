@@ -144,6 +144,41 @@ def test_separate_bank_transactions_with_different_balances_remain_distinct():
     assert first.deduplication_key != second.deduplication_key
 
 
+def test_repeated_identical_bank_rows_can_use_stable_statement_occurrence():
+    common = {
+        "source": Platform.BANK,
+        "source_account": "cmb-account",
+        "booking_date": date(2026, 6, 2),
+        "amount": "24.80",
+        "direction": "income",
+        "balance": "24.80",
+        "merchant": "朝朝宝",
+        "description": "朝朝宝转出",
+        "payment_method": "招商银行",
+    }
+    first = RawTransaction(
+        **common,
+        original_row={"row": "same"},
+        source_file_hash="same-export",
+        raw_row_number=190006,
+    )
+    second = RawTransaction(
+        **common,
+        original_row={"row": "same", "_statement_occurrence": 2},
+        source_file_hash="same-export",
+        raw_row_number=190008,
+    )
+    second_from_overlap = RawTransaction(
+        **common,
+        original_row={"row": "same", "_statement_occurrence": 2},
+        source_file_hash="overlap-export",
+        raw_row_number=456,
+    )
+
+    assert first.deduplication_key != second.deduplication_key
+    assert second.deduplication_key == second_from_overlap.deduplication_key
+
+
 def test_source_can_be_detached_after_incorrect_match():
     canonical = make_canonical()
     raw = make_raw(Platform.BANK, "bank-reference")

@@ -184,6 +184,7 @@ def test_android_compose_transactions_cover_search_crud_sources_and_trash() -> N
     assert 'selectedSources = options.mapTo(mutableSetOf()) { it.value }' in transactions
     assert 'selectedSources.isEmpty() -> setOf("__no_source_selected__")' in transactions
     assert 'Text("全选")' in transactions
+    assert 'if (amount.signum() > 0) "+$formatted"' in transactions
     assert 'mutate("POST", "/api/v1/transactions"' in transactions
     assert 'mutate("PATCH", "/api/v1/transactions/${item.id}"' in transactions
     assert 'mutate("DELETE", "/api/v1/transactions/${item.id}"' in transactions
@@ -216,6 +217,8 @@ def test_native_android_overview_uses_async_core_client() -> None:
     ).read_text(encoding="utf-8")
     assert "Executors.newFixedThreadPool(3)" in client
     assert 'getModule("beancount_dedup.android_bridge")' in client
+    assert "responseCache" in client
+    assert "fun invalidateCache()" in client
     assert "/api/v1/statistics/summary" in overview
     assert "/api/v1/statistics/timeline" in overview
     assert '"日" to "day"' in overview
@@ -308,6 +311,8 @@ def test_native_android_data_surface_keeps_platform_file_boundaries() -> None:
     assert "MaterialAutoCompleteTextView" in source
     assert "TextInputLayout" in source
     assert "MaterialCardView" in source
+    assert "LinearProgressIndicator" in source
+    assert "fun setBusy(" in source
     activity = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/MainActivity.kt"
     ).read_text(encoding="utf-8")

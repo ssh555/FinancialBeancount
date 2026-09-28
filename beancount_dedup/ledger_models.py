@@ -101,6 +101,14 @@ class RawTransaction:
                 "description": self.description.strip(),
                 "payment_method": self.payment_method.strip(),
             }
+            # Some bank PDFs contain two legitimate rows with every displayed
+            # field equal (notably repeated same-amount automatic redemptions).
+            # Import adapters add an ordinal only to the second and later
+            # occurrence so overlapping exports remain idempotent while those
+            # separate source observations are not erased.
+            occurrence = self.original_row.get("_statement_occurrence")
+            if occurrence is not None:
+                identity["statement_occurrence"] = occurrence
         else:
             # Without an external identifier or a bank running balance, the
             # file row remains the safest identity; collapsing identical rows

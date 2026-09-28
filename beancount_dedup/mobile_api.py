@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import parse_qs, urlsplit
 
 from .account_balances import AccountBalanceService
+from .balance_reconciliation import BalanceReconciliationService
 from .candidate_review import CandidateReviewEvent, CandidateReviewGroup, CandidateReviewService
 from .ledger_models import CanonicalTransaction, RawTransaction, ReviewStatus
 from .ledger_store import SCHEMA_VERSION, LedgerStore
@@ -95,6 +96,7 @@ class MobileLedgerApi:
         self.classification_review = TransactionClassificationService(store)
         self.statistics = StatisticsService(store)
         self.account_balances = AccountBalanceService(store)
+        self.balance_reconciliation = BalanceReconciliationService(store)
         self.statement_importer = StatementImporter(store)
 
     def dispatch(  # noqa: PLR0911
@@ -129,6 +131,38 @@ class MobileLedgerApi:
                 return self._ok(list(self.statement_importer.supported_formats()))
             if method == "GET" and path == "/api/v1/sources":
                 return self._ok(self.store.list_source_facets())
+            if method == "GET" and path == "/api/v1/account-balance-snapshots":
+                return self._ok(
+                    [
+                        {
+                            "snapshot_id": item.snapshot_id,
+                            "source": item.source,
+                            "source_account": item.source_account,
+                            "balance": str(item.balance),
+                            "balance_kind": item.balance_kind,
+                            "as_of": item.as_of.isoformat(),
+                            "created_at": item.created_at.isoformat(),
+                            "created_by": item.created_by,
+                            "note": item.note,
+                        }
+                        for item in self.store.list_latest_account_balance_snapshots()
+                    ]
+                )
+            if method == "POST" and path == "/api/v1/account-balance-snapshots":
+                payload = body or {}
+                snapshot = self.store.record_account_balance_snapshot(
+                    str(payload.get("source", "")),
+                    str(payload.get("source_account", "")),
+                    str(payload.get("balance", "")),
+                    date.fromisoformat(str(payload.get("as_of", ""))),
+                    created_by=str(payload.get("created_by", "local-user")),
+                    note=str(payload.get("note", "")),
+                    balance_kind=str(payload.get("balance_kind", "cash")),
+                )
+                return ApiResponse(
+                    HTTPStatus.CREATED,
+                    {"data": {"snapshot_id": snapshot.snapshot_id}},
+                )
             if method == "DELETE" and path == "/api/v1/data":
                 if (body or {}).get("confirmation") != "DELETE ALL DATA":
                     raise ValueError("confirmation must be DELETE ALL DATA")
@@ -150,7 +184,12 @@ class MobileLedgerApi:
                 )
                 return self._ok(report.to_dict())
             if method == "GET" and path == "/api/v1/statistics/account-balances":
-                return self._ok(self.account_balances.summarize())
+                return self._ok(
+                    {
+                        **self.account_balances.summarize(),
+                        "reconciliation": self.balance_reconciliation.summarize(),
+                    }
+                )
             if method == "GET" and path == "/api/v1/statistics/timeline":
                 period = query.get("period", ["month"])[0]
                 return self._ok(

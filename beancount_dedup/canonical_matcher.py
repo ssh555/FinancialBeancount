@@ -53,13 +53,13 @@ class ConservativeMatcher:
         raws = self.store.list_unlinked_raw()
         payments = [raw for raw in raws if raw.source in PAYMENT_PLATFORMS]
         banks = [raw for raw in raws if raw.source == Platform.BANK]
-        bank_index: dict[tuple[Decimal, str], list[RawTransaction]] = {}
+        bank_index: dict[Decimal, list[RawTransaction]] = {}
         for bank in banks:
-            bank_index.setdefault((bank.amount, bank.direction), []).append(bank)
+            bank_index.setdefault(bank.amount, []).append(bank)
 
         candidates = []
         for payment in payments:
-            for bank in bank_index.get((payment.amount, payment.direction), []):
+            for bank in bank_index.get(payment.amount, []):
                 candidate = self._candidate(payment, bank)
                 if candidate is not None:
                     candidates.append(candidate)
@@ -92,10 +92,16 @@ class ConservativeMatcher:
         if day_difference > 1:
             return None
 
-        evidence = [
-            MatchEvidence("amount_exact", Decimal("0.25")),
-            MatchEvidence("direction_exact", Decimal("0.10")),
-        ]
+        refund_credit_pair = _is_refund_credit_pair(payment, bank)
+        if payment.direction != bank.direction and not refund_credit_pair:
+            return None
+        evidence = [MatchEvidence("amount_exact", Decimal("0.25"))]
+        evidence.append(
+            MatchEvidence(
+                "refund_credit_direction" if refund_credit_pair else "direction_exact",
+                Decimal("0.10"),
+            )
+        )
         if day_difference == 0:
             evidence.append(MatchEvidence("booking_date_exact", Decimal("0.15")))
         else:
@@ -240,6 +246,21 @@ def _merchant_similarity(payment: RawTransaction, bank: RawTransaction) -> bool:
     )
     bank_tokens = _merchant_tokens(" ".join((bank.merchant, bank.counterparty, bank.description)))
     return bool(payment_tokens & bank_tokens)
+
+
+def _is_refund_credit_pair(payment: RawTransaction, bank: RawTransaction) -> bool:
+    if payment.amount <= 0 or payment.direction not in {"neutral", "income"}:
+        return False
+    if bank.amount <= 0 or bank.direction != "income":
+        return False
+    payment_text = " ".join(
+        (payment.merchant, payment.counterparty, payment.description, payment.status)
+    ).lower()
+    bank_text = " ".join((bank.merchant, bank.counterparty, bank.description, bank.status)).lower()
+    markers = ("退款", "退回", "refund")
+    return any(marker in payment_text for marker in markers) and any(
+        marker in bank_text for marker in markers
+    )
 
 
 def _merchant_tokens(value: str) -> set[str]:

@@ -28,7 +28,7 @@ CLASSIFICATION_RULES = (
     (
         TransactionType.INVESTMENT,
         "理财资产转移",
-        ("朝朝宝转入", "朝朝宝转出", "基金申购", "基金赎回", "理财申购", "理财赎回"),
+        ("朝朝宝转入", "朝朝宝转出", "基金赎回", "理财赎回"),
         Decimal("0.92"),
     ),
     (
@@ -87,9 +87,13 @@ class TransactionClassificationService:
         self.store = store
 
     def generate_candidates(self) -> list[ClassificationCandidate]:
+        internal_product_ids = self._internal_product_canonical_ids()
         candidates = []
         for transaction in self.store.list_canonical():
-            candidate = self._classify(transaction)
+            candidate = self._classify(
+                transaction,
+                internal_product=transaction.canonical_id in internal_product_ids,
+            )
             if candidate:
                 candidates.append(candidate)
         self._persist(candidates)
@@ -225,14 +229,43 @@ class TransactionClassificationService:
             for row in rows
         ]
 
+    def _internal_product_canonical_ids(self) -> set[str]:
+        rows = self.store.connection.execute(
+            """
+            SELECT DISTINCT links.canonical_id
+            FROM source_record_links AS links
+            JOIN raw_transactions AS raw ON raw.raw_id = links.raw_id
+            WHERE raw.source = 'bank'
+              AND (
+                    raw.description IN ('朝朝宝转入', '朝朝宝转出')
+                    OR (
+                        raw.description = '基金购买'
+                        AND raw.counterparty NOT LIKE '%基金销售%'
+                    )
+              )
+            """
+        ).fetchall()
+        return {row["canonical_id"] for row in rows}
+
     @staticmethod
-    def _classify(transaction: CanonicalTransaction) -> ClassificationCandidate | None:
+    def _classify(
+        transaction: CanonicalTransaction, *, internal_product: bool = False
+    ) -> ClassificationCandidate | None:
         if transaction.tx_type not in {
             TransactionType.EXPENSE,
             TransactionType.INCOME,
             TransactionType.UNKNOWN,
         }:
             return None
+        if internal_product:
+            return ClassificationCandidate(
+                candidate_id=str(uuid.uuid4()),
+                canonical_id=transaction.canonical_id,
+                proposed_type=TransactionType.INVESTMENT,
+                proposed_category="银行内部理财转移",
+                confidence=Decimal("0.98"),
+                evidence=("statement:bank_internal_product",),
+            )
         text = " ".join(
             (
                 transaction.merchant,

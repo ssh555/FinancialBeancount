@@ -6,9 +6,13 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, dataclass
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from beancount_dedup.account_balances import AccountBalanceService
+from beancount_dedup.balance_reconciliation import BalanceReconciliationService
 from beancount_dedup.candidate_review import CandidateReviewService
 from beancount_dedup.canonical_matcher import ConservativeMatcher
 from beancount_dedup.ledger_store import LedgerStore
@@ -50,6 +54,16 @@ class FileResult:
     message: str = ""
 
 
+@dataclass(frozen=True)
+class BalanceSnapshotInput:
+    source: str
+    source_account: str
+    balance: Decimal
+    as_of: date
+    note: str = ""
+    balance_kind: str = "cash"
+
+
 def discover_statements(root: Path) -> tuple[list[StatementFile], list[FileResult]]:
     statements: list[StatementFile] = []
     skipped: list[FileResult] = []
@@ -68,7 +82,11 @@ def discover_statements(root: Path) -> tuple[list[StatementFile], list[FileResul
     return statements, skipped
 
 
-def run_acceptance(bills_root: Path, output_directory: Path) -> dict[str, Any]:
+def run_acceptance(
+    bills_root: Path,
+    output_directory: Path,
+    balance_snapshots: tuple[BalanceSnapshotInput, ...] = (),
+) -> dict[str, Any]:
     if not bills_root.is_dir():
         raise ValueError(f"账单目录不存在：{bills_root}")
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -110,10 +128,17 @@ def run_acceptance(bills_root: Path, output_directory: Path) -> dict[str, Any]:
                 failures.append(failure)
                 results.append(failure)
 
-        candidates = ConservativeMatcher(store).generate_candidates()
+        ConservativeMatcher(store).generate_candidates()
         exact_payment_match_count = CandidateReviewService(store).confirm_exact_payment_matches(
             "full-ledger-acceptance"
         )
+        unique_statement_match_count = CandidateReviewService(
+            store
+        ).confirm_unique_statement_matches("full-ledger-acceptance")
+        ordered_statement_match_count = CandidateReviewService(
+            store
+        ).confirm_ordered_statement_matches("full-ledger-acceptance")
+        pending_match_candidate_count = len(ConservativeMatcher(store).list_candidates("pending"))
         safe_confirmed_count = ImportReviewService(store).confirm_unmatched_without_candidates(
             "full-ledger-acceptance"
         )
@@ -125,6 +150,18 @@ def run_acceptance(bills_root: Path, output_directory: Path) -> dict[str, Any]:
         refunds = RefundRelationshipService(store)
         refunds.generate_candidates()
         refund_resolution = refunds.confirm_preferred_refunds("full-ledger-acceptance")
+        for snapshot in balance_snapshots:
+            store.record_account_balance_snapshot(
+                snapshot.source,
+                snapshot.source_account,
+                snapshot.balance,
+                snapshot.as_of,
+                created_by="full-ledger-acceptance",
+                note=snapshot.note,
+                balance_kind=snapshot.balance_kind,
+            )
+        account_balance = AccountBalanceService(store).summarize()
+        balance_reconciliation = BalanceReconciliationService(store).summarize()
         counts = _table_counts(store)
         if not failures:
             export_portable_archive(store, archive)
@@ -156,11 +193,14 @@ def run_acceptance(bills_root: Path, output_directory: Path) -> dict[str, Any]:
         "restored_table_counts": restored_counts,
         "safe_confirmed_review_count": safe_confirmed_count,
         "exact_payment_match_count": exact_payment_match_count,
+        "unique_statement_match_count": unique_statement_match_count,
+        "ordered_statement_match_count": ordered_statement_match_count,
         "safe_classification_count": safe_classification_count,
         "safe_refund_count": refund_resolution["confirmed"],
         "refund_warning_count": refund_resolution["warnings"],
-        "pending_match_candidate_count": sum(item.status == "pending" for item in candidates)
-        - exact_payment_match_count,
+        "account_balance": account_balance,
+        "balance_reconciliation": balance_reconciliation,
+        "pending_match_candidate_count": pending_match_candidate_count,
         "files": [asdict(item) for item in results],
     }
     (output_directory / "acceptance-report.json").write_text(
@@ -180,14 +220,30 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bills", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--balance-snapshot",
+        action="append",
+        default=[],
+        metavar="SOURCE|ACCOUNT|BALANCE|AS_OF|NOTE",
+        help="append an audited balance anchor; AS_OF uses YYYY-MM-DD",
+    )
     args = parser.parse_args(argv)
     try:
-        report = run_acceptance(args.bills.resolve(), args.output.resolve())
+        snapshots = tuple(_parse_balance_snapshot(value) for value in args.balance_snapshot)
+        report = run_acceptance(args.bills.resolve(), args.output.resolve(), snapshots)
     except (OSError, RuntimeError, ValueError) as exc:
         print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["success"] else 1
+
+
+def _parse_balance_snapshot(value: str) -> BalanceSnapshotInput:
+    parts = value.split("|", 4)
+    if len(parts) != 5:
+        raise ValueError("balance snapshot must be SOURCE|ACCOUNT|BALANCE|AS_OF|NOTE")
+    source, account, balance, as_of, note = parts
+    return BalanceSnapshotInput(source, account, Decimal(balance), date.fromisoformat(as_of), note)
 
 
 if __name__ == "__main__":

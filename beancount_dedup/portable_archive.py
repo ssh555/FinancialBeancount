@@ -33,7 +33,8 @@ LEGACY_TABLE_ORDER = (
     "canonical_deletions",
     "canonical_events",
 )
-TABLE_ORDER = (*LEGACY_TABLE_ORDER, "schema_migrations")
+V10_TABLE_ORDER = (*LEGACY_TABLE_ORDER, "schema_migrations")
+TABLE_ORDER = (*V10_TABLE_ORDER, "account_balance_snapshots")
 
 
 class PortableArchiveError(ValueError):
@@ -195,4 +196,6 @@ def _validate_manifest(manifest: PortableArchiveManifest) -> None:
 def _table_order_for_manifest(manifest: PortableArchiveManifest) -> tuple[str, ...]:
     if manifest.format_version == 1:
         return LEGACY_TABLE_ORDER
+    if manifest.schema_version <= 10:
+        return V10_TABLE_ORDER
     return TABLE_ORDER

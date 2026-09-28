@@ -23,7 +23,7 @@ from .ledger_models import (
 )
 from .models import SourceId, TransactionType, normalize_source_id, source_id_value
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 MINIMUM_UPGRADABLE_SCHEMA_VERSION = 8
 
 
@@ -105,6 +105,21 @@ class ImportCoverageReport:
     existing_count: int
     duplicate_occurrence_count: int
     missing_raw_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AccountBalanceSnapshot:
+    """An auditable balance anchor for an account without statement balances."""
+
+    snapshot_id: str
+    source: str
+    source_account: str
+    balance: Decimal
+    balance_kind: str
+    as_of: date
+    created_at: datetime
+    created_by: str
+    note: str
 
 
 class LedgerStore:
@@ -235,6 +250,10 @@ class LedgerStore:
                 self._migrate_9_to_10()
                 applied.append((9, 10))
                 version = 10
+            if version == 10:
+                self._migrate_10_to_11()
+                applied.append((10, 11))
+                version = 11
             if version != SCHEMA_VERSION:
                 raise LedgerMigrationError(f"no migration path from schema {version}")
             completed_at = datetime.now(timezone.utc).isoformat()
@@ -312,6 +331,26 @@ class LedgerStore:
                 backup_path TEXT NOT NULL,
                 status TEXT NOT NULL
             )
+            """
+        )
+
+    def _migrate_10_to_11(self) -> None:
+        self.connection.executescript(
+            """
+            CREATE TABLE account_balance_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                source_account TEXT NOT NULL,
+                balance TEXT NOT NULL,
+                balance_kind TEXT NOT NULL,
+                as_of TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                note TEXT NOT NULL
+            );
+            CREATE INDEX idx_account_balance_snapshots_latest
+                ON account_balance_snapshots(source, source_account, balance_kind,
+                                             as_of DESC, created_at DESC);
             """
         )
 
@@ -590,6 +629,22 @@ class LedgerStore:
                     backup_path TEXT NOT NULL,
                     status TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS account_balance_snapshots (
+                    snapshot_id TEXT PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    source_account TEXT NOT NULL,
+                    balance TEXT NOT NULL,
+                    balance_kind TEXT NOT NULL,
+                    as_of TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    note TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_account_balance_snapshots_latest
+                    ON account_balance_snapshots(source, source_account, balance_kind,
+                                                 as_of DESC, created_at DESC);
                 """
             )
             connection.execute(
@@ -992,6 +1047,94 @@ class LedgerStore:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def record_account_balance_snapshot(
+        self,
+        source: str,
+        source_account: str,
+        balance: Decimal | str,
+        as_of: date,
+        *,
+        created_by: str,
+        note: str = "",
+        balance_kind: str = "cash",
+    ) -> AccountBalanceSnapshot:
+        """Append an immutable, user-verifiable account balance anchor."""
+
+        source = source.strip().lower()
+        source_account = source_account.strip()
+        created_by = created_by.strip()
+        balance_kind = balance_kind.strip().lower()
+        amount = Decimal(balance)
+        if not source or not source_account or not created_by:
+            raise ValueError("source, source_account, and created_by are required")
+        if balance_kind not in {"cash", "investment", "credit_limit"}:
+            raise ValueError("balance_kind must be cash, investment, or credit_limit")
+        if not amount.is_finite():
+            raise ValueError("balance must be finite")
+        snapshot = AccountBalanceSnapshot(
+            snapshot_id=str(uuid.uuid4()),
+            source=source,
+            source_account=source_account,
+            balance=amount,
+            balance_kind=balance_kind,
+            as_of=as_of,
+            created_at=datetime.now(),
+            created_by=created_by,
+            note=note.strip(),
+        )
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO account_balance_snapshots(
+                    snapshot_id, source, source_account, balance, balance_kind,
+                    as_of, created_at, created_by, note
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot.snapshot_id,
+                    snapshot.source,
+                    snapshot.source_account,
+                    str(snapshot.balance),
+                    snapshot.balance_kind,
+                    snapshot.as_of.isoformat(),
+                    snapshot.created_at.isoformat(),
+                    snapshot.created_by,
+                    snapshot.note,
+                ),
+            )
+        return snapshot
+
+    def list_latest_account_balance_snapshots(self) -> list[AccountBalanceSnapshot]:
+        """Return the newest anchor for each source/account/balance kind."""
+
+        rows = self.connection.execute(
+            """
+            WITH ranked AS (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY source, source_account, balance_kind
+                    ORDER BY as_of DESC, created_at DESC, snapshot_id DESC
+                ) AS position
+                FROM account_balance_snapshots
+            )
+            SELECT * FROM ranked WHERE position = 1
+            ORDER BY source, source_account, balance_kind
+            """
+        ).fetchall()
+        return [
+            AccountBalanceSnapshot(
+                snapshot_id=row["snapshot_id"],
+                source=row["source"],
+                source_account=row["source_account"],
+                balance=Decimal(row["balance"]),
+                balance_kind=row["balance_kind"],
+                as_of=date.fromisoformat(row["as_of"]),
+                created_at=datetime.fromisoformat(row["created_at"]),
+                created_by=row["created_by"],
+                note=row["note"],
+            )
+            for row in rows
+        ]
+
     def list_canonical_page(
         self,
         *,
@@ -1206,6 +1349,7 @@ class LedgerStore:
         """Permanently clear ledger content while retaining schema and migration metadata."""
 
         tables = (
+            "account_balance_snapshots",
             "classification_events",
             "classification_candidates",
             "transaction_relationship_events",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import replace
 from decimal import InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -129,8 +130,33 @@ def import_cmb_pdf(
                     )
                 except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
                     errors.append(f"page {page_number} record {record_number}: {exc}")
+    parsed = _disambiguate_repeated_bank_rows(parsed)
     errors.extend(_balance_chain_errors(parsed))
     return importer.persist(Platform.BANK, statement_path.name, file_hash, parsed, errors)
+
+
+def _disambiguate_repeated_bank_rows(transactions):
+    """Keep repeated identical rows distinct without breaking overlap imports."""
+
+    occurrences: dict[str, int] = {}
+    result = []
+    for transaction in transactions:
+        base_key = transaction.deduplication_key
+        occurrence = occurrences.get(base_key, 0) + 1
+        occurrences[base_key] = occurrence
+        if occurrence == 1:
+            result.append(transaction)
+            continue
+        result.append(
+            replace(
+                transaction,
+                original_row={
+                    **transaction.original_row,
+                    "_statement_occurrence": occurrence,
+                },
+            )
+        )
+    return result
 
 
 def import_icbc_pdf(

@@ -702,3 +702,26 @@ def test_statistics_summary_api_uses_date_filters(store):
     balances = MobileLedgerApi(store).dispatch("GET", "/api/v1/statistics/account-balances")
     assert balances.status == 200
     assert balances.body["data"]["known_balance"] == "0"
+
+
+def test_account_balance_snapshot_api_records_and_reports_wallet_anchor(store) -> None:
+    api = MobileLedgerApi(store)
+    created = api.dispatch(
+        "POST",
+        "/api/v1/account-balance-snapshots",
+        {
+            "source": "alipay",
+            "source_account": "支付宝余额",
+            "balance": "0.21",
+            "as_of": "2026-09-21",
+            "created_by": "local-user",
+            "note": "ledger cutoff verification",
+        },
+    )
+
+    assert created.status == 201
+    listed = api.dispatch("GET", "/api/v1/account-balance-snapshots")
+    assert listed.status == 200
+    assert listed.body["data"][0]["balance"] == "0.21"
+    balances = api.dispatch("GET", "/api/v1/statistics/account-balances")
+    assert balances.body["data"]["known_balance"] == "0.21"
