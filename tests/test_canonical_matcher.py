@@ -225,6 +225,30 @@ def test_same_platform_records_are_never_cross_platform_candidates(store):
     assert ConservativeMatcher(store).generate_candidates() == []
 
 
+def test_explicit_bank_payment_rail_rejects_the_other_platform(store):
+    add(
+        store,
+        raw(
+            Platform.WECHAT,
+            "wechat-payment",
+            when=datetime(2026, 3, 1, 9, 0),
+            merchant="同额商户",
+            payment_method="工商银行储蓄卡(4000)",
+            suffix="4000",
+        ),
+        raw(
+            Platform.BANK,
+            "alipay-bank",
+            when=datetime(2026, 3, 1, 9, 0),
+            merchant="支付宝支付科技有限公司",
+            payment_method="工商银行",
+            suffix="4000",
+        ),
+    )
+
+    assert ConservativeMatcher(store).generate_candidates() == []
+
+
 def test_exact_platform_refund_and_bank_credit_create_candidate(store):
     payment = raw(
         Platform.ALIPAY,

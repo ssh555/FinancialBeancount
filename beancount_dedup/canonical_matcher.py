@@ -95,6 +95,9 @@ class ConservativeMatcher:
         refund_credit_pair = _is_refund_credit_pair(payment, bank)
         if payment.direction != bank.direction and not refund_credit_pair:
             return None
+        payment_rail = _bank_payment_rail(bank)
+        if payment_rail is not None and payment.source != payment_rail:
+            return None
         evidence = [MatchEvidence("amount_exact", Decimal("0.25"))]
         evidence.append(
             MatchEvidence(
@@ -125,6 +128,8 @@ class ConservativeMatcher:
             evidence.append(MatchEvidence("bank_suffix_exact", Decimal("0.25")))
         if bank_name_match:
             evidence.append(MatchEvidence("bank_name_exact", Decimal("0.10")))
+        if payment_rail is not None:
+            evidence.append(MatchEvidence("payment_rail_exact", Decimal("0.10")))
         if exact_time:
             evidence.append(MatchEvidence("datetime_exact", Decimal("0.20")))
         elif close_time:
@@ -261,6 +266,15 @@ def _is_refund_credit_pair(payment: RawTransaction, bank: RawTransaction) -> boo
     return any(marker in payment_text for marker in markers) and any(
         marker in bank_text for marker in markers
     )
+
+
+def _bank_payment_rail(bank: RawTransaction) -> Platform | None:
+    text = " ".join((bank.merchant, bank.counterparty, bank.description)).lower()
+    if "支付宝" in text or "alipay" in text:
+        return Platform.ALIPAY
+    if "财付通" in text or "微信" in text or "wechat" in text:
+        return Platform.WECHAT
+    return None
 
 
 def _merchant_tokens(value: str) -> set[str]:

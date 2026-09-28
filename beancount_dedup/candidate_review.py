@@ -90,7 +90,6 @@ class CandidateReviewService:
                 or "amount_exact" not in codes
                 or "booking_date_exact" not in codes
                 or "bank_name_exact" not in codes
-                or "bank_time_unavailable" not in codes
                 or not direction_supported
             ):
                 continue
