@@ -163,8 +163,10 @@ async function loadOverview() {
       request("/api/v1/statistics/account-balances"),
     ]);
     const balanceNote = balanceExplanation(data, balances.data);
+    const pendingBankAdjustment = (balances.data.cash_accounts || []).reduce((total, item) => total + Number(item.pending_adjustment || 0), 0);
+    const estimateNote = pendingBankAdjustment ? ` · 含待银行入账估算 ${money(pendingBankAdjustment)}` : "";
     const cards = [
-      ["账户余额", money(balances.data.known_balance), `${balances.data.as_of || "暂无日期"} · 不随来源筛选`, "featured"],
+      ["账户余额", money(balances.data.known_balance), `${balances.data.as_of || "暂无日期"}${estimateNote} · 不随来源筛选`, "featured"],
       ["收支差额", money(data.net_cash_flow), balanceNote, "featured"],
       ["支出", money(data.gross_expense), `${data.expense_count} 笔`, ""],
       ["收入", money(data.ordinary_income), `${data.income_count} 笔`, ""],

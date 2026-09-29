@@ -56,7 +56,7 @@ class AndroidUpdateManager(private val context: Context) {
         )
     }
 
-    fun download(update: AndroidUpdateInfo): File {
+    fun download(update: AndroidUpdateInfo, onProgress: (Int) -> Unit = {}): File {
         val checksum = downloadText(update.checksumUrl, 4096).trim().split(Regex("\\s+"))
         require(checksum.size >= 2 && checksum[0].matches(Regex("[0-9a-fA-F]{64}"))) { "APK 校验文件无效" }
         require(checksum.last().substringAfterLast('/').removePrefix("*") == update.apkName) { "APK 校验文件名不匹配" }
@@ -73,6 +73,7 @@ class AndroidUpdateManager(private val context: Context) {
                 target.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
                     var total = 0L
+                    var reportedPercent = -1
                     while (true) {
                         val count = input.read(buffer)
                         if (count < 0) break
@@ -80,6 +81,11 @@ class AndroidUpdateManager(private val context: Context) {
                         require(total <= MAX_APK_BYTES && total <= update.apkSize) { "APK 下载大小超限" }
                         output.write(buffer, 0, count)
                         digest.update(buffer, 0, count)
+                        val percent = ((total * 100) / update.apkSize).toInt().coerceIn(0, 100)
+                        if (percent != reportedPercent) {
+                            reportedPercent = percent
+                            onProgress(percent)
+                        }
                     }
                     require(total == update.apkSize) { "APK 下载不完整" }
                 }

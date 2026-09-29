@@ -152,3 +152,54 @@ def test_verified_wallet_snapshots_are_auditable_and_included_in_known_balance(
     assert next(item for item in latest if item.source == "wechat").note == (
         "ledger cutoff verification"
     )
+
+
+def test_bank_balance_rolls_forward_with_later_card_bound_platform_rows(tmp_path: Path) -> None:
+    with LedgerStore(tmp_path / "ledger.sqlite3") as store:
+        store.add_raw(
+            RawTransaction(
+                source=Platform.BANK,
+                source_account="招商银行",
+                booking_date=date(2026, 9, 27),
+                amount="-20",
+                direction="expense",
+                balance="1000",
+                bank_card_suffix="5066",
+                original_row={"bank": "anchor"},
+            )
+        )
+        store.add_raw(
+            RawTransaction(
+                source=Platform.ALIPAY,
+                source_account="支付宝",
+                booking_date=date(2026, 9, 28),
+                amount="-30",
+                direction="expense",
+                bank_card_suffix="5066",
+                payment_method="招商银行储蓄卡(5066)",
+                transaction_id="payment-after-cutoff",
+                original_row={"payment": "after-cutoff"},
+            )
+        )
+        store.add_raw(
+            RawTransaction(
+                source=Platform.WECHAT,
+                source_account="微信",
+                booking_date=date(2026, 9, 29),
+                amount="10",
+                direction="income",
+                bank_card_suffix="5066",
+                payment_method="招商银行储蓄卡(5066)",
+                transaction_id="refund-after-cutoff",
+                original_row={"refund": "after-cutoff"},
+            )
+        )
+
+        report = AccountBalanceService(store).summarize()
+
+    account = report["cash_accounts"][0]
+    assert account["statement_balance"] == "1000"
+    assert account["pending_adjustment"] == "-20"
+    assert account["balance"] == "980"
+    assert account["as_of"] == "2026-09-29"
+    assert account["estimated"] == "true"

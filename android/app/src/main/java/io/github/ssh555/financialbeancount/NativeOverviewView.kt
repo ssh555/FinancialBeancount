@@ -75,7 +75,14 @@ class NativeOverviewView(
                 val asOf = data.optString("as_of")
                     .takeUnless { it.isBlank() || it == "null" }
                     ?: "暂无日期"
-                accountBalance.text = "账户余额 ${money(data.getString("known_balance"))}\n截至 $asOf · 不随来源筛选"
+                val cashAccounts = data.optJSONArray("cash_accounts")
+                var pendingAdjustment = BigDecimal.ZERO
+                if (cashAccounts != null) for (index in 0 until cashAccounts.length()) {
+                    pendingAdjustment += cashAccounts.getJSONObject(index)
+                        .optString("pending_adjustment", "0").toBigDecimalOrNull() ?: BigDecimal.ZERO
+                }
+                val estimate = if (pendingAdjustment.compareTo(BigDecimal.ZERO) == 0) "" else " · 含待银行入账估算 ${money(pendingAdjustment.toPlainString())}"
+                accountBalance.text = "账户余额 ${money(data.getString("known_balance"))}\n截至 $asOf$estimate · 不随来源筛选"
                 knownBalanceValue = data.getString("known_balance").toBigDecimal()
                 updateReconciliationNote()
                 NativeUi.styleTree(accountBalance)

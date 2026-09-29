@@ -187,7 +187,7 @@ def import_icbc_pdf(
                 if not any(_cell_text(value) for value in values):
                     continue
                 row_number = page_number * 10000 + record_number
-                row = _icbc_row(values)
+                row = _icbc_row(values, table[0])
                 try:
                     parsed.append(
                         _icbc_raw(

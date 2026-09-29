@@ -96,10 +96,6 @@ class RawTransaction:
                 "direction": self.direction,
                 "balance": str(self.balance),
                 "currency": self.currency,
-                "merchant": self.merchant.strip(),
-                "counterparty": self.counterparty.strip(),
-                "description": self.description.strip(),
-                "payment_method": self.payment_method.strip(),
             }
             # Some bank PDFs contain two legitimate rows with every displayed
             # field equal (notably repeated same-amount automatic redemptions).

@@ -374,20 +374,41 @@ ICBC_HEADERS = [
     "渠道",
 ]
 
+ICBC_COMPACT_HEADERS = [
+    "交易日期",
+    "账号",
+    "储种",
+    "序号",
+    "币种",
+    "钞汇",
+    "摘要",
+    "地区",
+    "收入/支出金额",
+    "余额",
+    "渠道",
+]
+
 
 def _is_icbc_header(values: list[Any]) -> bool:
     normalized = [re.sub(r"[^\u4e00-\u9fff]", "", _cell_text(value)) for value in values]
-    expected = [re.sub(r"[^\u4e00-\u9fff]", "", header) for header in ICBC_HEADERS]
-    return len(normalized) == len(expected) and normalized == expected
+    return any(
+        normalized == [re.sub(r"[^\u4e00-\u9fff]", "", header) for header in headers]
+        for headers in (ICBC_HEADERS, ICBC_COMPACT_HEADERS)
+    )
 
 
-def _icbc_row(values: list[Any]) -> dict[str, str]:
-    if len(values) != len(ICBC_HEADERS):
+def _icbc_row(values: list[Any], header_values: list[Any] | None = None) -> dict[str, str]:
+    headers = ICBC_HEADERS
+    if header_values is not None and _is_icbc_header(header_values):
+        headers = ICBC_COMPACT_HEADERS if len(header_values) == len(ICBC_COMPACT_HEADERS) else ICBC_HEADERS
+    elif len(values) == len(ICBC_COMPACT_HEADERS):
+        headers = ICBC_COMPACT_HEADERS
+    if len(values) != len(headers):
         raise StatementImportError(
-            f"ICBC transaction row has {len(values)} columns, expected {len(ICBC_HEADERS)}"
+            f"ICBC transaction row has {len(values)} columns, expected {len(headers)}"
         )
     return {
-        header: re.sub(r"\s+", "", _cell_text(value)) for header, value in zip(ICBC_HEADERS, values)
+        header: re.sub(r"\s+", "", _cell_text(value)) for header, value in zip(headers, values)
     }
 
 

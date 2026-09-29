@@ -125,6 +125,33 @@ def test_overlapping_bank_exports_have_same_observation_key():
     assert partial_export.deduplication_key == annual_export.deduplication_key
 
 
+def test_overlapping_bank_exports_ignore_optional_counterparty_detail():
+    common = {
+        "source": Platform.BANK,
+        "source_account": "cmb-account",
+        "booking_date": date(2026, 9, 18),
+        "amount": "22.35",
+        "direction": "income",
+        "balance": "1125.01",
+        "description": "代发工资",
+        "payment_method": "招商银行",
+    }
+    detailed = RawTransaction(
+        **common,
+        merchant="某单位 01090007832210006",
+        counterparty="某单位 01090007832210006",
+        original_row={"export": "detailed"},
+    )
+    compact = RawTransaction(
+        **common,
+        merchant="某单位",
+        counterparty="某单位",
+        original_row={"export": "compact"},
+    )
+
+    assert detailed.deduplication_key == compact.deduplication_key
+
+
 def test_separate_bank_transactions_with_different_balances_remain_distinct():
     common = {
         "source": Platform.BANK,

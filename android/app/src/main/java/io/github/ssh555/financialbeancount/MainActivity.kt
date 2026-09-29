@@ -15,6 +15,7 @@ import com.chaquo.python.android.AndroidPlatform
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import kotlin.concurrent.thread
 
 private const val MAX_IMPORT_BYTES = 50L * 1024 * 1024
@@ -97,13 +98,22 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
     }
 
     override fun checkForUpdates() {
-        nativeDataView?.showProgress("正在检查 GitHub Release…")
+        val checking = MaterialAlertDialogBuilder(this)
+            .setTitle("检查更新")
+            .setMessage("正在连接 GitHub Release…")
+            .setCancelable(false)
+            .show()
         thread(name = "android-update-check") {
             try {
                 val manager = AndroidUpdateManager(this)
                 val update = manager.check()
                 runOnUiThread {
-                    if (update == null) nativeDataView?.showProgress("当前已是最新版本（${BuildConfig.VERSION_NAME}）")
+                    checking.dismiss()
+                    if (update == null) MaterialAlertDialogBuilder(this)
+                        .setTitle("已是最新版本")
+                        .setMessage("当前版本：${BuildConfig.VERSION_NAME}")
+                        .setPositiveButton("确定", null)
+                        .show()
                     else MaterialAlertDialogBuilder(this)
                         .setTitle("发现新版本 ${update.version}")
                         .setMessage("下载大小：${update.apkSize / 1024 / 1024.0} MiB\n\n${update.notes.take(1200)}")
@@ -112,18 +122,32 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
                         .show()
                 }
             } catch (error: Exception) {
-                nativeDataView?.post { nativeDataView?.showProgress(error.message ?: "检查更新失败") }
+                runOnUiThread {
+                    checking.dismiss()
+                    MaterialAlertDialogBuilder(this)
+                        .setTitle("检查更新失败")
+                        .setMessage(updateErrorMessage(error))
+                        .setPositiveButton("确定", null)
+                        .show()
+                }
             }
         }
     }
 
     private fun downloadAndInstall(update: AndroidUpdateInfo) {
-        nativeDataView?.showProgress("正在下载并校验 ${update.apkName}…")
+        val downloading = MaterialAlertDialogBuilder(this)
+            .setTitle("正在更新到 ${update.version}")
+            .setMessage("正在下载 APK：0%")
+            .setCancelable(false)
+            .show()
         thread(name = "android-update-download") {
             try {
                 val manager = AndroidUpdateManager(this)
-                val apk = manager.download(update)
+                val apk = manager.download(update) { percent ->
+                    runOnUiThread { downloading.setMessage("正在下载 APK：$percent%") }
+                }
                 runOnUiThread {
+                    downloading.dismiss()
                     if (manager.install(apk)) nativeDataView?.showProgress("校验通过，已交给系统安装器")
                     else {
                         pendingUpdateApk = apk
@@ -131,10 +155,24 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
                     }
                 }
             } catch (error: Exception) {
-                nativeDataView?.post { nativeDataView?.showProgress(error.message ?: "更新下载失败") }
+                runOnUiThread {
+                    downloading.dismiss()
+                    MaterialAlertDialogBuilder(this)
+                        .setTitle("更新失败")
+                        .setMessage(updateErrorMessage(error))
+                        .setPositiveButton("确定", null)
+                        .show()
+                }
             }
         }
     }
+
+    private fun updateErrorMessage(error: Exception): String =
+        if (error is IOException || error.cause is IOException) {
+            "无法连接 GitHub。请检查网络；若当前网络无法访问 GitHub，请开启 Clash VPN 后重试。"
+        } else {
+            error.message ?: "更新操作失败"
+        }
 
     override fun onResume() {
         super.onResume()

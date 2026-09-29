@@ -100,6 +100,7 @@ private data class SummaryState(
     val income: String = "0",
     val refunds: String = "0",
     val excluded: Int = 0,
+    val pendingBankAdjustment: String = "0",
 )
 
 private data class TimelineState(val period: String, val income: String, val expense: String, val net: String)
@@ -119,9 +120,14 @@ private fun ComposeOverview(client: NativeLedgerClient, modifier: Modifier = Mod
         client.request("GET", "/api/v1/statistics/account-balances") { result ->
             result.onSuccess { response ->
                 val data = response.getJSONObject("body").getJSONObject("data")
+                val cashAccounts = data.optJSONArray("cash_accounts")
                 summary = summary.copy(
                     knownBalance = data.optString("known_balance", "0"),
                     balanceDate = data.optString("as_of").takeUnless { it.isBlank() || it == "null" } ?: "暂无日期",
+                    pendingBankAdjustment = if (cashAccounts == null) "0" else
+                        (0 until cashAccounts.length()).fold(BigDecimal.ZERO) { total, index ->
+                            total + (cashAccounts.getJSONObject(index).optString("pending_adjustment", "0").toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                        }.toPlainString(),
                 )
             }.onFailure { error = it.message ?: "账户余额加载失败" }
         }
@@ -210,7 +216,9 @@ private fun BalanceCard(state: SummaryState) {
             Text("账户余额", color = androidx.compose.ui.graphics.Color.White)
             Text(money(state.knownBalance), color = androidx.compose.ui.graphics.Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
-            Text("截至 ${state.balanceDate} · 不随来源筛选", color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.82f))
+            val estimate = state.pendingBankAdjustment.toBigDecimalOrNull()?.takeIf { it.compareTo(BigDecimal.ZERO) != 0 }
+                ?.let { " · 含待银行入账估算 ${money(it.toPlainString())}" }.orEmpty()
+            Text("截至 ${state.balanceDate}$estimate · 不随来源筛选", color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.82f))
         }
     }
 }

@@ -16,6 +16,8 @@ class BalanceItem:
     as_of: str
     source: str | None = None
     balance_kind: str = "cash"
+    statement_balance: Decimal | None = None
+    pending_adjustment: Decimal = Decimal("0")
 
     def to_dict(self) -> dict[str, str]:
         result = {
@@ -26,6 +28,10 @@ class BalanceItem:
         }
         if self.source is not None:
             result["source"] = self.source
+        if self.statement_balance is not None:
+            result["statement_balance"] = str(self.statement_balance)
+            result["pending_adjustment"] = str(self.pending_adjustment)
+            result["estimated"] = str(self.pending_adjustment != 0).lower()
         return result
 
 
@@ -59,7 +65,7 @@ class AccountBalanceService:
             "cash_accounts": [item.to_dict() for item in cash_accounts],
             "internal_products": [item.to_dict() for item in internal_products],
             "snapshot_accounts": [item.to_dict() for item in snapshot_accounts],
-            "scope_note": "汇总带余额的银行账户、可识别的银行内部产品，以及经用户核验的支付账户余额快照；不含余额未知的外部基金平台。",
+            "scope_note": "银行余额以最新流水余额为锚点，并叠加其后微信、支付宝中明确绑定该卡的待银行入账交易；另汇总可识别的银行内部产品及经用户核验的支付账户余额快照。不含没有银行流水余额锚点的账户或余额未知的外部基金平台。",
         }
 
     def _snapshot_accounts(self) -> tuple[BalanceItem, ...]:
@@ -78,7 +84,8 @@ class AccountBalanceService:
         rows = self.store.connection.execute(
             """
             WITH ranked AS (
-                SELECT source_account, booking_date, balance,
+                SELECT source_account, booking_date, transaction_time, balance,
+                       bank_card_suffix,
                        ROW_NUMBER() OVER (
                            PARTITION BY source_account
                            ORDER BY booking_date DESC,
@@ -89,14 +96,44 @@ class AccountBalanceService:
                 FROM raw_transactions
                 WHERE source = 'bank' AND balance IS NOT NULL AND balance != ''
             )
-            SELECT source_account, booking_date, balance
+            SELECT source_account, booking_date, transaction_time, balance, bank_card_suffix
             FROM ranked WHERE position = 1 ORDER BY source_account
             """
         ).fetchall()
-        return tuple(
-            BalanceItem(row["source_account"], Decimal(row["balance"]), row["booking_date"])
-            for row in rows
-        )
+        result = []
+        for row in rows:
+            statement_balance = Decimal(row["balance"])
+            suffix = row["bank_card_suffix"]
+            adjustment = Decimal("0")
+            as_of = row["booking_date"]
+            pending = self.store.connection.execute(
+                """
+                    SELECT amount, booking_date
+                    FROM raw_transactions
+                    WHERE source IN ('wechat', 'alipay')
+                      AND (
+                            (? != '' AND bank_card_suffix = ?)
+                            OR payment_method LIKE '%' || ? || '%'
+                      )
+                      AND booking_date > ?
+                      AND amount != '0'
+                    ORDER BY booking_date, COALESCE(transaction_time, ''), raw_id
+                """,
+                (suffix or "", suffix or "", row["source_account"], row["booking_date"]),
+            ).fetchall()
+            adjustment = sum((Decimal(item["amount"]) for item in pending), Decimal("0"))
+            if pending:
+                as_of = max(item["booking_date"] for item in pending)
+            result.append(
+                BalanceItem(
+                    row["source_account"],
+                    statement_balance + adjustment,
+                    as_of,
+                    statement_balance=statement_balance,
+                    pending_adjustment=adjustment,
+                )
+            )
+        return tuple(result)
 
     def _internal_products(self) -> tuple[BalanceItem, ...]:
         rows = self.store.connection.execute(

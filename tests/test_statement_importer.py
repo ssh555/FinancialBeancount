@@ -13,6 +13,7 @@ from beancount_dedup.statement_importer import (
     _balance_chain_errors,
     _cmb_raw,
     _icbc_raw,
+    _icbc_row,
     _is_icbc_header,
     _signed_amount,
 )
@@ -243,6 +244,23 @@ def test_icbc_header_tolerates_watermark_digits_and_spaces():
     ]
 
     assert _is_icbc_header(headers) is True
+
+
+def test_icbc_compact_header_without_counterparty_columns_is_supported():
+    headers = [
+        "交易日期", "账号", "储种", "序号", "币种", "钞汇", "摘要", "地区",
+        "收入/支出金额", "余额", "渠道",
+    ]
+    values = [
+        "2026-09-29\n11:58:58", "0200237901032186357", "活期", "00000",
+        "人民币", "钞", "退款", "0200", "+140.00", "171.09", "快捷支付",
+    ]
+
+    assert _is_icbc_header(headers) is True
+    row = _icbc_row(values, headers)
+    assert row["交易日期"] == "2026-09-2911:58:58"
+    assert row["收入/支出金额"] == "+140.00"
+    assert row.get("对方户名", "") == ""
 
 
 def test_bank_balance_chain_detects_a_misparsed_amount():
