@@ -42,6 +42,15 @@ def test_android_shell_reuses_core_and_limits_network_to_updates() -> None:
     assert "cleanupDownloadedPackages" in updater
     assert "directory.listFiles()?.forEach" in updater
     assert "AndroidUpdateManager(this).cleanupDownloadedPackages()" in activity
+    for stage in (
+        "FETCHING_CHECKSUM",
+        "CONNECTING_DOWNLOAD",
+        "DOWNLOADING",
+        "VERIFYING",
+    ):
+        assert stage in updater and stage in activity
+    assert "LinearProgressIndicator" in activity
+    assert 'progressText.text = "$value%"' in activity
 
 
 def test_android_overview_handles_empty_balance_date_and_fits_period_controls() -> None:

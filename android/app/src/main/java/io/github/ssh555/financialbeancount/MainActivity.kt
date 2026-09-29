@@ -5,6 +5,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Base64
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +16,7 @@ import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -135,16 +139,70 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
     }
 
     private fun downloadAndInstall(update: AndroidUpdateInfo) {
+        val stageText = TextView(this).apply {
+            text = "正在获取文件校验信息…"
+            textSize = 16f
+            setTextColor(NativeUi.ink)
+        }
+        val progressText = TextView(this).apply {
+            text = ""
+            textSize = 14f
+            setTextColor(NativeUi.muted)
+            visibility = View.GONE
+        }
+        val progressBar = LinearProgressIndicator(this).apply {
+            isIndeterminate = true
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val horizontal = NativeUi.dp(this@MainActivity, 24)
+            setPadding(horizontal, NativeUi.dp(this@MainActivity, 8), horizontal, NativeUi.dp(this@MainActivity, 12))
+            addView(stageText)
+            addView(progressText, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = NativeUi.dp(this@MainActivity, 8) })
+            addView(progressBar, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                NativeUi.dp(this@MainActivity, 4),
+            ).apply { topMargin = NativeUi.dp(this@MainActivity, 12) })
+        }
         val downloading = MaterialAlertDialogBuilder(this)
             .setTitle("正在更新到 ${update.version}")
-            .setMessage("正在下载 APK：0%")
+            .setView(content)
             .setCancelable(false)
             .show()
         thread(name = "android-update-download") {
             try {
                 val manager = AndroidUpdateManager(this)
-                val apk = manager.download(update) { percent ->
-                    runOnUiThread { downloading.setMessage("正在下载 APK：$percent%") }
+                val apk = manager.download(update) { stage, percent ->
+                    runOnUiThread {
+                        when (stage) {
+                            AndroidUpdateStage.FETCHING_CHECKSUM -> {
+                                stageText.text = "正在获取文件校验信息…"
+                                progressText.visibility = View.GONE
+                                progressBar.isIndeterminate = true
+                            }
+                            AndroidUpdateStage.CONNECTING_DOWNLOAD -> {
+                                stageText.text = "正在连接 APK 下载服务器…"
+                                progressText.visibility = View.GONE
+                                progressBar.isIndeterminate = true
+                            }
+                            AndroidUpdateStage.DOWNLOADING -> {
+                                val value = percent ?: 0
+                                stageText.text = "正在下载 APK"
+                                progressText.text = "$value%"
+                                progressText.visibility = View.VISIBLE
+                                progressBar.isIndeterminate = false
+                                progressBar.setProgressCompat(value, true)
+                            }
+                            AndroidUpdateStage.VERIFYING -> {
+                                stageText.text = "下载完成，正在校验文件完整性…"
+                                progressText.visibility = View.GONE
+                                progressBar.isIndeterminate = true
+                            }
+                        }
+                    }
                 }
                 runOnUiThread {
                     downloading.dismiss()

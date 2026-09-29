@@ -25,6 +25,13 @@ data class AndroidUpdateInfo(
     val checksumUrl: String,
 )
 
+enum class AndroidUpdateStage {
+    FETCHING_CHECKSUM,
+    CONNECTING_DOWNLOAD,
+    DOWNLOADING,
+    VERIFYING,
+}
+
 class AndroidUpdateManager(private val context: Context) {
     fun check(): AndroidUpdateInfo? {
         val release = JSONObject(downloadText(RELEASE_API, MAX_METADATA_BYTES))
@@ -56,13 +63,18 @@ class AndroidUpdateManager(private val context: Context) {
         )
     }
 
-    fun download(update: AndroidUpdateInfo, onProgress: (Int) -> Unit = {}): File {
+    fun download(
+        update: AndroidUpdateInfo,
+        onStatus: (AndroidUpdateStage, Int?) -> Unit = { _, _ -> },
+    ): File {
+        onStatus(AndroidUpdateStage.FETCHING_CHECKSUM, null)
         val checksum = downloadText(update.checksumUrl, 4096).trim().split(Regex("\\s+"))
         require(checksum.size >= 2 && checksum[0].matches(Regex("[0-9a-fA-F]{64}"))) { "APK 校验文件无效" }
         require(checksum.last().substringAfterLast('/').removePrefix("*") == update.apkName) { "APK 校验文件名不匹配" }
         val directory = File(context.cacheDir, "updates").apply { mkdirs() }
         directory.listFiles()?.forEach { stale -> stale.delete() }
         val target = File(directory, update.apkName)
+        onStatus(AndroidUpdateStage.CONNECTING_DOWNLOAD, null)
         val connection = open(update.apkUrl)
         try {
             require(connection.responseCode == HttpURLConnection.HTTP_OK) { "APK 下载失败：HTTP ${connection.responseCode}" }
@@ -84,12 +96,13 @@ class AndroidUpdateManager(private val context: Context) {
                         val percent = ((total * 100) / update.apkSize).toInt().coerceIn(0, 100)
                         if (percent != reportedPercent) {
                             reportedPercent = percent
-                            onProgress(percent)
+                            onStatus(AndroidUpdateStage.DOWNLOADING, percent)
                         }
                     }
                     require(total == update.apkSize) { "APK 下载不完整" }
                 }
             }
+            onStatus(AndroidUpdateStage.VERIFYING, null)
             val actual = digest.digest().joinToString("") { "%02x".format(it) }
             require(actual.equals(checksum[0], ignoreCase = true)) { "APK SHA-256 校验失败" }
             return target
