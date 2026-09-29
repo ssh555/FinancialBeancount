@@ -378,8 +378,7 @@ def _extract_cqrcb_page(page: Any, page_number: int) -> list[dict[str, str]]:
     anchors = [
         word
         for word in words
-        if float(word["x0"]) < 80
-        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", word["text"])
+        if float(word["x0"]) < 80 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", word["text"])
     ]
     anchors.sort(key=lambda word: float(word["top"]))
     records = []
@@ -392,9 +391,7 @@ def _extract_cqrcb_page(page: Any, page_number: int) -> list[dict[str, str]]:
         block = [word for word in words if lower <= float(word["top"]) < upper]
 
         def column_text(x_min: float, x_max: float, words_in_block=block) -> str:
-            selected = [
-                word for word in words_in_block if x_min <= float(word["x0"]) < x_max
-            ]
+            selected = [word for word in words_in_block if x_min <= float(word["x0"]) < x_max]
             return "".join(word["text"] for word in sorted(selected, key=_word_order)).strip()
 
         amount = column_text(75, 130)
@@ -408,7 +405,11 @@ def _extract_cqrcb_page(page: Any, page_number: int) -> list[dict[str, str]]:
             raise StatementImportError(
                 f"page {page_number}: invalid CQRCB balance near {anchor['text']}"
             )
-        description = "活期结息" if not counterparty_account and Decimal(amount.replace(",", "")) > 0 else "官方流水"
+        description = (
+            "活期结息"
+            if not counterparty_account and Decimal(amount.replace(",", "")) > 0
+            else "官方流水"
+        )
         records.append(
             {
                 "交易日期": anchor["text"],
@@ -512,16 +513,18 @@ def _is_icbc_header(values: list[Any]) -> bool:
 def _icbc_row(values: list[Any], header_values: list[Any] | None = None) -> dict[str, str]:
     headers = ICBC_HEADERS
     if header_values is not None and _is_icbc_header(header_values):
-        headers = ICBC_COMPACT_HEADERS if len(header_values) == len(ICBC_COMPACT_HEADERS) else ICBC_HEADERS
+        headers = (
+            ICBC_COMPACT_HEADERS
+            if len(header_values) == len(ICBC_COMPACT_HEADERS)
+            else ICBC_HEADERS
+        )
     elif len(values) == len(ICBC_COMPACT_HEADERS):
         headers = ICBC_COMPACT_HEADERS
     if len(values) != len(headers):
         raise StatementImportError(
             f"ICBC transaction row has {len(values)} columns, expected {len(headers)}"
         )
-    return {
-        header: re.sub(r"\s+", "", _cell_text(value)) for header, value in zip(headers, values)
-    }
+    return {header: re.sub(r"\s+", "", _cell_text(value)) for header, value in zip(headers, values)}
 
 
 def _decimal_amount(value: str) -> Decimal:
