@@ -32,6 +32,8 @@ FORMAT_BY_FOLDER_SUFFIX = {
     ("支付宝", ".csv"): "alipay.csv",
     ("招商银行", ".pdf"): "cmb.pdf",
     ("工商银行", ".pdf"): "icbc.pdf",
+    ("重庆农村商业银行", ".pdf"): "cqrcb.pdf",
+    ("重庆农村商业银行", ".csv"): "cqrcb.csv",
 }
 
 

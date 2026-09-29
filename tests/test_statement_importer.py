@@ -12,6 +12,7 @@ from beancount_dedup.statement_importer import (
     StatementImportError,
     _balance_chain_errors,
     _cmb_raw,
+    _cqrcb_raw,
     _icbc_raw,
     _icbc_row,
     _is_icbc_header,
@@ -224,6 +225,31 @@ def test_icbc_precise_row_preserves_channel_and_card_suffix():
     assert raw.transaction_time.isoformat() == "2026-03-01T11:31:44"
     assert raw.bank_card_suffix == "4000"
     assert raw.payment_method == "工商银行 网银"
+
+
+def test_cqrcb_row_preserves_running_balance_and_card_suffix():
+    raw = _cqrcb_raw(
+        {
+            "交易日期": "2021-01-30",
+            "交易发生额": "-24.00",
+            "账户余额": "2,262.37",
+            "本方账号": "6215281073756235",
+            "对方账号": "1513177361",
+            "对方户名": "享哆味",
+            "摘要": "财付通付",
+            "数据性质": "官方",
+        },
+        row_number=20001,
+        source_account="重庆农村商业银行",
+        source_file="cqrcb.pdf",
+        source_file_hash="hash",
+    )
+
+    assert raw.booking_date.isoformat() == "2021-01-30"
+    assert str(raw.amount) == "-24.00"
+    assert str(raw.balance) == "2262.37"
+    assert raw.bank_card_suffix == "6235"
+    assert raw.status == "官方"
 
 
 def test_icbc_header_tolerates_watermark_digits_and_spaces():

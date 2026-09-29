@@ -18,8 +18,10 @@ from .statement_importer import (
     _balance_chain_errors,
     _cell_text,
     _cmb_raw,
+    _cqrcb_raw,
     _decode_csv,
     _extract_cmb_page,
+    _extract_cqrcb_page,
     _file_sha256,
     _filename_password,
     _find_header,
@@ -200,5 +202,72 @@ def import_icbc_pdf(
                     )
                 except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
                     errors.append(f"page {page_number} record {record_number}: {exc}")
+    errors.extend(_balance_chain_errors(parsed))
+    return importer.persist(Platform.BANK, statement_path.name, file_hash, parsed, errors)
+
+
+def import_cqrcb_pdf(
+    importer: StatementImporter, path: str | Path, source_account: str, **options: Any
+) -> ImportSummary:
+    del options
+    pdfplumber = _load_pdfplumber()
+    statement_path = Path(path)
+    file_hash = _file_sha256(statement_path)
+    extracted = []
+    errors = []
+    with pdfplumber.open(statement_path) as pdf:
+        for page_number, page in enumerate(pdf.pages, 1):
+            records = _extract_cqrcb_page(page, page_number)
+            for record_number, row in enumerate(records, 1):
+                extracted.append((page_number, record_number, row))
+    parsed = []
+    for chronological_number, (page_number, record_number, row) in enumerate(
+        reversed(extracted), 1
+    ):
+        try:
+            parsed.append(
+                _cqrcb_raw(
+                    row,
+                    row_number=chronological_number,
+                    source_account=source_account,
+                    source_file=statement_path.name,
+                    source_file_hash=file_hash,
+                )
+            )
+        except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+            errors.append(f"page {page_number} record {record_number}: {exc}")
+    parsed = _disambiguate_repeated_bank_rows(parsed)
+    errors.extend(_balance_chain_errors(parsed))
+    return importer.persist(Platform.BANK, statement_path.name, file_hash, parsed, errors)
+
+
+def import_cqrcb_csv(
+    importer: StatementImporter, path: str | Path, source_account: str, **options: Any
+) -> ImportSummary:
+    del options
+    statement_path = Path(path)
+    file_hash = _file_sha256(statement_path)
+    text = _decode_csv(statement_path.read_bytes())
+    rows = list(csv.DictReader(text.splitlines()))
+    required = {"交易日期", "交易发生额", "账户余额", "本方账号", "数据性质"}
+    if not rows or not required.issubset(rows[0]):
+        raise ValueError(f"CQRCB CSV 缺少字段：{sorted(required)}")
+    parsed = []
+    errors = []
+    for row_number, row in enumerate(rows, 2):
+        normalized = {key: _cell_text(value) for key, value in row.items() if key}
+        try:
+            parsed.append(
+                _cqrcb_raw(
+                    normalized,
+                    row_number=row_number,
+                    source_account=source_account,
+                    source_file=statement_path.name,
+                    source_file_hash=file_hash,
+                )
+            )
+        except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+            errors.append(f"row {row_number}: {exc}")
+    parsed = _disambiguate_repeated_bank_rows(parsed)
     errors.extend(_balance_chain_errors(parsed))
     return importer.persist(Platform.BANK, statement_path.name, file_hash, parsed, errors)

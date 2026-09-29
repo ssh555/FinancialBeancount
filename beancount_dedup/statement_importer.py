@@ -126,6 +126,16 @@ class StatementImporter:
 
         return self.import_statement("icbc.pdf", path, source_account, password=password)
 
+    def import_cqrcb_pdf(self, path: str | Path, source_account: str) -> ImportSummary:
+        """Compatibility wrapper for the registered CQRCB PDF adapter."""
+
+        return self.import_statement("cqrcb.pdf", path, source_account)
+
+    def import_cqrcb_csv(self, path: str | Path, source_account: str) -> ImportSummary:
+        """Compatibility wrapper for the registered reconstructed CQRCB CSV adapter."""
+
+        return self.import_statement("cqrcb.csv", path, source_account)
+
     def persist(
         self,
         source: SourceId,
@@ -311,6 +321,108 @@ def _icbc_raw(
         raw_row_number=row_number,
         original_row=row,
     )
+
+
+def _cqrcb_raw(
+    row: dict[str, str],
+    *,
+    row_number: int,
+    source_account: str,
+    source_file: str,
+    source_file_hash: str,
+) -> RawTransaction:
+    transaction_time_text = row.get("交易时间", "")
+    transaction_time = _parse_datetime(transaction_time_text) if transaction_time_text else None
+    booking_date = (
+        transaction_time.date()
+        if transaction_time
+        else datetime.strptime(row["交易日期"], "%Y-%m-%d").date()
+    )
+    amount = _decimal_amount(row["交易发生额"])
+    counterparty_account = row.get("对方账号", "")
+    counterparty_name = row.get("对方户名", "")
+    account = row.get("本方账号", "")
+    description = row.get("摘要", "") or "重庆农商行流水"
+    return RawTransaction(
+        source=Platform.BANK,
+        source_account=source_account,
+        transaction_time=transaction_time,
+        booking_date=booking_date,
+        amount=amount,
+        direction="expense" if amount < 0 else "income",
+        merchant=counterparty_name or counterparty_account,
+        counterparty=counterparty_name or counterparty_account,
+        description=description,
+        payment_method="重庆农村商业银行",
+        bank_card_suffix=_card_suffix(account) or _card_suffix(source_account),
+        balance=_decimal_amount(row["账户余额"]),
+        currency="CNY",
+        status=row.get("数据性质", "官方"),
+        source_file=source_file,
+        source_file_hash=source_file_hash,
+        raw_row_number=row_number,
+        original_row=row,
+    )
+
+
+def _extract_cqrcb_page(page: Any, page_number: int) -> list[dict[str, str]]:
+    """Extract numeric CQRCB rows despite the official PDF's broken CJK map."""
+
+    words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+    account_candidates = [
+        word["text"]
+        for word in words
+        if float(word["top"]) < 80 and re.fullmatch(r"\d{16,19}", word["text"])
+    ]
+    account = account_candidates[0] if account_candidates else ""
+    anchors = [
+        word
+        for word in words
+        if float(word["x0"]) < 80
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", word["text"])
+    ]
+    anchors.sort(key=lambda word: float(word["top"]))
+    records = []
+    for index, anchor in enumerate(anchors):
+        previous_top = float(anchors[index - 1]["top"]) if index else None
+        next_top = float(anchors[index + 1]["top"]) if index + 1 < len(anchors) else None
+        top = float(anchor["top"])
+        lower = (previous_top + top) / 2 if previous_top is not None else top - 10
+        upper = (top + next_top) / 2 if next_top is not None else top + 12
+        block = [word for word in words if lower <= float(word["top"]) < upper]
+
+        def column_text(x_min: float, x_max: float, words_in_block=block) -> str:
+            selected = [
+                word for word in words_in_block if x_min <= float(word["x0"]) < x_max
+            ]
+            return "".join(word["text"] for word in sorted(selected, key=_word_order)).strip()
+
+        amount = column_text(75, 130)
+        balance = column_text(130, 195)
+        counterparty_account = re.sub(r"\D", "", column_text(195, 290))
+        if not re.fullmatch(r"[+-]?\d[\d,]*\.\d{2}", amount):
+            raise StatementImportError(
+                f"page {page_number}: invalid CQRCB amount near {anchor['text']}"
+            )
+        if not re.fullmatch(r"\d[\d,]*\.\d{2}", balance):
+            raise StatementImportError(
+                f"page {page_number}: invalid CQRCB balance near {anchor['text']}"
+            )
+        description = "活期结息" if not counterparty_account and Decimal(amount.replace(",", "")) > 0 else "官方流水"
+        records.append(
+            {
+                "交易日期": anchor["text"],
+                "交易发生额": amount,
+                "账户余额": balance,
+                "本方账号": account,
+                "对方账号": counterparty_account,
+                "对方户名": "",
+                "摘要": description,
+                "备注": "PDF 中文字体缺少可提取映射，保留数值、账号及余额链",
+                "数据性质": "官方",
+            }
+        )
+    return records
 
 
 def _extract_cmb_page(page: Any, page_number: int) -> list[dict[str, str]]:

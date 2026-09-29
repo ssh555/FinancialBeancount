@@ -22,6 +22,8 @@ def test_builtin_registry_exposes_stable_format_capabilities():
     assert [item.format_id for item in formats] == [
         "alipay.csv",
         "cmb.pdf",
+        "cqrcb.csv",
+        "cqrcb.pdf",
         "icbc.pdf",
         "wechat.xlsx",
     ]

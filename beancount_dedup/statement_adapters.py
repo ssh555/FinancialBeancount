@@ -119,6 +119,8 @@ def create_builtin_statement_registry() -> StatementAdapterRegistry:
     from .builtin_statement_formats import (
         import_alipay_csv,
         import_cmb_pdf,
+        import_cqrcb_csv,
+        import_cqrcb_pdf,
         import_icbc_pdf,
         import_wechat_xlsx,
     )
@@ -154,6 +156,22 @@ def create_builtin_statement_registry() -> StatementAdapterRegistry:
             "工商银行官方 PDF",
             (".pdf",),
             import_icbc_pdf,
+        )
+    )
+    registry.register(
+        FunctionStatementAdapter(
+            "cqrcb.pdf",
+            "重庆农村商业银行官方 PDF",
+            (".pdf",),
+            import_cqrcb_pdf,
+        )
+    )
+    registry.register(
+        FunctionStatementAdapter(
+            "cqrcb.csv",
+            "重庆农村商业银行推算补齐 CSV",
+            (".csv",),
+            import_cqrcb_csv,
         )
     )
     return registry
