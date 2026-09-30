@@ -100,9 +100,7 @@ class ImportReviewService:
                         canonical, include_sources=False
                     ),
                     "affected_source_raw_ids": (
-                        [row.raw_id for row in canonical.raw_transactions]
-                        if canonical
-                        else []
+                        [row.raw_id for row in canonical.raw_transactions] if canonical else []
                     ),
                 }
                 connection.execute(
@@ -134,9 +132,7 @@ class ImportReviewService:
                         canonical, include_sources=False
                     ),
                     "affected_source_raw_ids": (
-                        [row.raw_id for row in canonical.raw_transactions]
-                        if canonical
-                        else []
+                        [row.raw_id for row in canonical.raw_transactions] if canonical else []
                     ),
                 }
                 connection.execute(
@@ -426,11 +422,7 @@ class ImportReviewService:
             "persisted_raw": persisted_data,
             "was_created": snapshot["was_created"],
             "affected_canonical": affected,
-            **(
-                {"missing_from_import": True}
-                if snapshot.get("missing_from_import")
-                else {}
-            ),
+            **({"missing_from_import": True} if snapshot.get("missing_from_import") else {}),
         }
 
     @staticmethod
@@ -462,8 +454,4 @@ def _canonical_audit_snapshot(
 def _raw_overrides(imported: RawTransaction, persisted: RawTransaction) -> dict[str, Any]:
     imported_data = imported.to_dict(include_original_row=False)
     persisted_data = persisted.to_dict(include_original_row=False)
-    return {
-        key: value
-        for key, value in imported_data.items()
-        if persisted_data.get(key) != value
-    }
+    return {key: value for key, value in imported_data.items() if persisted_data.get(key) != value}

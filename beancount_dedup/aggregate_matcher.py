@@ -46,9 +46,7 @@ class AggregateMatcher:
                 if sum((row.amount for row in group), Decimal("0")) == bank.amount
             ]
             for group in solutions:
-                candidates.append(
-                    AggregateMatchCandidate(bank, tuple(group), len(solutions) == 1)
-                )
+                candidates.append(AggregateMatchCandidate(bank, tuple(group), len(solutions) == 1))
         payment_usage: dict[str, int] = {}
         for candidate in candidates:
             if not candidate.is_unique:
@@ -59,8 +57,7 @@ class AggregateMatcher:
             AggregateMatchCandidate(
                 item.bank,
                 item.payments,
-                item.is_unique
-                and all(payment_usage.get(row.raw_id) == 1 for row in item.payments),
+                item.is_unique and all(payment_usage.get(row.raw_id) == 1 for row in item.payments),
             )
             for item in candidates
         ]
@@ -83,18 +80,14 @@ class AggregateMatcher:
                 amount=candidate.bank.amount,
                 direction=direction,
                 merchant=" + ".join(
-                    dict.fromkeys(
-                        row.merchant or row.counterparty for row in candidate.payments
-                    )
+                    dict.fromkeys(row.merchant or row.counterparty for row in candidate.payments)
                 ),
                 payment_channel="+".join(
                     sorted({source_id_value(row.source) for row in candidate.payments})
                 ),
                 funding_account=candidate.bank.source_account,
                 tx_type=(
-                    TransactionType.EXPENSE
-                    if candidate.bank.amount < 0
-                    else TransactionType.INCOME
+                    TransactionType.EXPENSE if candidate.bank.amount < 0 else TransactionType.INCOME
                 ),
                 review_status=ReviewStatus.AUTO_CONFIRMED,
                 notes="同日平台明细合并为一笔银行流水；金额精确求和且余额链候选唯一",

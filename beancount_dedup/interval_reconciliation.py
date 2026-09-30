@@ -98,8 +98,7 @@ class IntervalReconciliationService:
                     "row_count": len(intervals),
                     "opening_balance": intervals[0]["actual_balance"],
                     "opening_before_first": str(
-                        Decimal(intervals[0]["actual_balance"])
-                        - Decimal(intervals[0]["amount"])
+                        Decimal(intervals[0]["actual_balance"]) - Decimal(intervals[0]["amount"])
                     ),
                     "closing_balance": intervals[-1]["actual_balance"],
                     "source_break_count": sum(
@@ -123,9 +122,7 @@ class IntervalReconciliationService:
         return {
             "account_count": len(accounts),
             "source_break_count": sum(item["source_break_count"] for item in accounts),
-            "canonical_missing_count": sum(
-                item["canonical_missing_count"] for item in accounts
-            ),
+            "canonical_missing_count": sum(item["canonical_missing_count"] for item in accounts),
             "canonical_amount_mismatch_count": sum(
                 item["canonical_amount_mismatch_count"] for item in accounts
             ),
@@ -217,9 +214,7 @@ class IntervalReconciliationService:
 
     @staticmethod
     def _wallet_funding_account(row: Any) -> str | None:
-        value = " ".join(
-            (row["payment_method"] or "", row["description"] or "")
-        ).lower()
+        value = " ".join((row["payment_method"] or "", row["description"] or "")).lower()
         aliases = {
             "招商银行": ("招商银行", "招商", "5066", "cmb"),
             "工商银行": ("工商银行", "工行", "4000", "icbc"),
@@ -245,9 +240,7 @@ class IntervalReconciliationService:
         self, accounts: list[dict[str, Any]], wallet_accounts: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """Reconcile closing assets without confusing transfers with income."""
-        bank_closing = sum(
-            (Decimal(item["closing_balance"]) for item in accounts), Decimal("0")
-        )
+        bank_closing = sum((Decimal(item["closing_balance"]) for item in accounts), Decimal("0"))
         wallet_closing = sum(
             (Decimal(item["projected_balance"]) for item in wallet_accounts), Decimal("0")
         )
@@ -289,13 +282,18 @@ class IntervalReconciliationService:
             ).fetchall()
             pending += sum((Decimal(row["amount"]) for row in rows), Decimal("0"))
         computed = bank_closing + wallet_closing + product_total + pending
-        known = bank_closing + product_total + pending + sum(
-            (
-                Decimal(item["actual_balance"])
-                for item in wallet_accounts
-                if item["actual_balance"] is not None
-            ),
-            Decimal("0"),
+        known = (
+            bank_closing
+            + product_total
+            + pending
+            + sum(
+                (
+                    Decimal(item["actual_balance"])
+                    for item in wallet_accounts
+                    if item["actual_balance"] is not None
+                ),
+                Decimal("0"),
+            )
         )
         return {
             "bank_statement_closing": str(bank_closing),
@@ -385,9 +383,7 @@ class IntervalReconciliationService:
     ) -> tuple[Decimal | None, str, dict[str, Any]]:
         amount = Decimal(row["amount"])
         method = row["payment_method"] or ""
-        text = " ".join(
-            (row["merchant"] or "", row["description"] or "", row["status"] or "")
-        )
+        text = " ".join((row["merchant"] or "", row["description"] or "", row["status"] or ""))
         if source == "wechat":
             if "充值完成" in text:
                 return abs(amount), "wallet_recharge", {}

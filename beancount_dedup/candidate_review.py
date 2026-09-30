@@ -77,9 +77,7 @@ class CandidateReviewService:
         exact_by_bank: dict[str, int] = defaultdict(int)
         for group in self.list_groups("pending"):
             codes = {item.code for item in group.candidate.evidence}
-            exact_payment = (
-                "direction_exact" in codes and self._has_exact_bank_identity(codes)
-            )
+            exact_payment = "direction_exact" in codes and self._has_exact_bank_identity(codes)
             exact_refund_credit = bool(
                 {"refund_credit_direction", "anchored_refund_credit"} & codes
             )

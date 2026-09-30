@@ -220,9 +220,7 @@ class StatisticsService:
         )
         if self._asset_change_cache and self._asset_change_cache[0] == signature:
             return self._asset_change_cache[1]
-        report = IntervalReconciliationService(self.store).summarize(
-            include_match_candidates=False
-        )
+        report = IntervalReconciliationService(self.store).summarize(include_match_candidates=False)
         if any(
             report[key]
             for key in (
@@ -242,13 +240,11 @@ class StatisticsService:
         wallet_sources = {
             row["source"]
             for row in self.store.connection.execute(
-                "SELECT DISTINCT source FROM raw_transactions "
-                "WHERE source IN ('wechat', 'alipay')"
+                "SELECT DISTINCT source FROM raw_transactions WHERE source IN ('wechat', 'alipay')"
             ).fetchall()
         }
         if any(
-            item["source"] in wallet_sources and item["actual_balance"] is None
-            for item in wallets
+            item["source"] in wallet_sources and item["actual_balance"] is None for item in wallets
         ):
             return self._cache_asset_change(signature, None)
         return self._cache_asset_change(

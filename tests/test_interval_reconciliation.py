@@ -32,11 +32,7 @@ def test_interval_reconciliation_finds_first_balance_break(tmp_path):
                 amount=stored.amount,
                 direction=stored.direction,
                 merchant="测试",
-                tx_type=(
-                    TransactionType.INCOME
-                    if stored.amount >= 0
-                    else TransactionType.EXPENSE
-                ),
+                tx_type=(TransactionType.INCOME if stored.amount >= 0 else TransactionType.EXPENSE),
             )
             canonical.add_source(
                 stored,
@@ -110,10 +106,7 @@ def test_wallet_reconciliation_splits_mixed_alipay_payment(tmp_path):
     assert wallet["difference"] == "0.00"
     assert wallet["intervals"][0]["reason"] == "mixed_funding_split"
     assert wallet["intervals"][0]["evidence"]["balance_anchor"] == "100"
-    assert (
-        wallet["intervals"][0]["evidence"]["match_phase"]
-        == "fuzzy_split_fallback"
-    )
+    assert wallet["intervals"][0]["evidence"]["match_phase"] == "fuzzy_split_fallback"
 
 
 def test_mixed_payment_does_not_reuse_bank_row_linked_to_other_wallet_raw(tmp_path):
@@ -225,14 +218,10 @@ def test_aggregate_fallback_reports_unique_exact_sum_without_confirming(tmp_path
                 merchant=stored.merchant,
                 tx_type=TransactionType.EXPENSE,
             )
-            canonical.add_source(
-                stored, confidence="1", reasons=("test",), matcher_version="test"
-            )
+            canonical.add_source(stored, confidence="1", reasons=("test",), matcher_version="test")
             store.add_canonical(canonical)
 
-        candidates = IntervalReconciliationService(store).summarize()[
-            "aggregate_match_candidates"
-        ]
+        candidates = IntervalReconciliationService(store).summarize()["aggregate_match_candidates"]
 
     assert len(candidates) == 1
     assert candidates[0]["bank_amount"] == "-30"
@@ -245,8 +234,6 @@ def test_fast_reconciliation_can_skip_expensive_match_diagnostics(tmp_path):
     with LedgerStore(tmp_path / "ledger.sqlite3") as store:
         store.add_raw(_raw("100", "100", "1"))
 
-        report = IntervalReconciliationService(store).summarize(
-            include_match_candidates=False
-        )
+        report = IntervalReconciliationService(store).summarize(include_match_candidates=False)
 
     assert report["aggregate_match_candidates"] == []

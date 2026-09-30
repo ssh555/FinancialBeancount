@@ -236,9 +236,7 @@ def test_refund_can_use_same_day_bank_balance_when_bank_text_is_generic(store):
     assert [(item.payment_raw_id, item.bank_raw_id) for item in candidates] == [
         (payment.raw_id, bank.raw_id)
     ]
-    assert "anchored_refund_credit" in {
-        item.code for item in candidates[0].evidence
-    }
+    assert "anchored_refund_credit" in {item.code for item in candidates[0].evidence}
     assert "match_phase_fuzzy" in {item.code for item in candidates[0].evidence}
 
 
