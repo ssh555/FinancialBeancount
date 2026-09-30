@@ -248,6 +248,40 @@ def test_unique_named_bank_match_without_bank_time_is_safely_confirmed(store):
     }
 
 
+def test_exact_card_suffix_and_payment_rail_can_replace_missing_bank_name(store):
+    payment = replace(
+        raw(Platform.WECHAT, "rail-payment", merchant="商户消费", suffix="5066"),
+        payment_method="零钱通道未提供银行名",
+    )
+    bank = replace(
+        raw(
+            Platform.BANK,
+            "rail-bank",
+            merchant="财付通付",
+            suffix="5066",
+            bank_time=datetime(2026, 6, 1, 12, 0, 30),
+        ),
+        payment_method="重庆农村商业银行",
+    )
+    payment = store.add_raw(payment).raw_transaction
+    bank = store.add_raw(bank).raw_transaction
+    candidates = ConservativeMatcher(store).generate_candidates()
+    assert len(candidates) == 1
+    codes = {item.code for item in candidates[0].evidence}
+    assert {"bank_suffix_exact", "payment_rail_exact", "datetime_close"} <= codes
+    assert "bank_name_exact" not in codes
+
+    confirmed = CandidateReviewService(store).confirm_unique_statement_matches("acceptance")
+
+    assert confirmed == 1
+    canonical = store.find_canonical_for_raw(payment.raw_id)
+    assert canonical is not None
+    assert {item.raw_transaction.raw_id for item in canonical.source_links} == {
+        payment.raw_id,
+        bank.raw_id,
+    }
+
+
 def test_equal_ambiguous_group_is_resolved_by_platform_and_statement_order(store):
     payments = []
     banks = []
@@ -281,6 +315,60 @@ def test_equal_ambiguous_group_is_resolved_by_platform_and_statement_order(store
             bank.raw_id,
         }
         assert "流水行序" in canonical.notes
+
+
+def test_unequal_multiset_confirms_duplicate_observation_and_leaves_extra_bank_row(store):
+    payment = store.add_raw(
+        raw(Platform.ALIPAY, "one-payment", merchant="同额商户", suffix="5066")
+    ).raw_transaction
+    banks = []
+    for index in (1, 2):
+        bank = replace(
+            raw(Platform.BANK, f"bank-{index}", merchant="同额商户", suffix="5066"),
+            raw_row_number=100 + index,
+        )
+        banks.append(store.add_raw(bank).raw_transaction)
+    ConservativeMatcher(store).generate_candidates()
+
+    confirmed = CandidateReviewService(store).confirm_ordered_statement_matches("acceptance")
+
+    assert confirmed == 1
+    canonical = store.find_canonical_for_raw(payment.raw_id)
+    assert canonical is not None
+    assert canonical.source_count == 2
+    assert sum(store.find_canonical_for_raw(bank.raw_id) is None for bank in banks) == 1
+
+
+def test_equal_timed_multiset_is_resolved_in_time_order(store):
+    payments = []
+    banks = []
+    for index, minute in enumerate((10, 20), 1):
+        payment = replace(
+            raw(Platform.WECHAT, f"timed-payment-{index}", merchant="同额商户", suffix="5066"),
+            transaction_time=datetime(2026, 6, 1, 12, minute),
+        )
+        payments.append(store.add_raw(payment).raw_transaction)
+        bank = replace(
+            raw(
+                Platform.BANK,
+                f"timed-bank-{index}",
+                merchant="财付通付",
+                suffix="5066",
+                bank_time=datetime(2026, 6, 1, 12, minute, 30),
+            ),
+            raw_row_number=100 + index,
+        )
+        banks.append(store.add_raw(bank).raw_transaction)
+    ConservativeMatcher(store).generate_candidates()
+
+    assert CandidateReviewService(store).confirm_ordered_statement_matches("acceptance") == 2
+    for payment, bank in zip(payments, banks):
+        canonical = store.find_canonical_for_raw(payment.raw_id)
+        assert canonical is not None
+        assert {link.raw_transaction.raw_id for link in canonical.source_links} == {
+            payment.raw_id,
+            bank.raw_id,
+        }
 
 
 def test_modified_confirmation_and_conflicts_are_fully_audited(store):

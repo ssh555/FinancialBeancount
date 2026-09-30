@@ -43,6 +43,20 @@ class CandidateReviewService:
     def __init__(self, store: LedgerStore):
         self.store = store
 
+    @staticmethod
+    def _has_exact_bank_identity(codes: set[str]) -> bool:
+        """Accept either an exported bank name or an exact card+rail identity.
+
+        Reconstructed bank statements can retain the exact card suffix and
+        payment rail even when the original bank-name field was unavailable.
+        Requiring both signals keeps that evidence stricter than a name alone.
+        """
+
+        return "bank_name_exact" in codes or {
+            "bank_suffix_exact",
+            "payment_rail_exact",
+        }.issubset(codes)
+
     def list_groups(self, status: str | None = "pending") -> list[CandidateReviewGroup]:
         candidates = ConservativeMatcher(self.store).list_candidates(status)
         all_candidates = ConservativeMatcher(self.store).list_candidates(None)
@@ -63,8 +77,12 @@ class CandidateReviewService:
         exact_by_bank: dict[str, int] = defaultdict(int)
         for group in self.list_groups("pending"):
             codes = {item.code for item in group.candidate.evidence}
-            exact_payment = "direction_exact" in codes and "bank_name_exact" in codes
-            exact_refund_credit = "refund_credit_direction" in codes
+            exact_payment = (
+                "direction_exact" in codes and self._has_exact_bank_identity(codes)
+            )
+            exact_refund_credit = bool(
+                {"refund_credit_direction", "anchored_refund_credit"} & codes
+            )
             if (
                 "datetime_exact" in codes
                 and "amount_exact" in codes
@@ -100,13 +118,23 @@ class CandidateReviewService:
             selected = []
             for candidate in pending:
                 codes = {item.code for item in candidate.evidence}
-                direction_supported = bool({"direction_exact", "refund_credit_direction"} & codes)
+                direction_supported = bool(
+                    {
+                        "direction_exact",
+                        "refund_credit_direction",
+                        "anchored_refund_credit",
+                    }
+                    & codes
+                )
+                identity_supported = self._has_exact_bank_identity(codes) or (
+                    "merchant_semantic_match" in codes
+                )
                 if (
                     by_payment[candidate.payment_raw_id] == 1
                     and by_bank[candidate.bank_raw_id] == 1
                     and "amount_exact" in codes
                     and "booking_date_exact" in codes
-                    and "bank_name_exact" in codes
+                    and identity_supported
                     and direction_supported
                 ):
                     selected.append(candidate.candidate_id)
@@ -150,7 +178,7 @@ class CandidateReviewService:
                         item.payment_raw_id for item in by_bank[candidate.bank_raw_id]
                     )
             seen_payments.update(payment_ids)
-            if len(payment_ids) != len(bank_ids) or len(payment_ids) < 2:
+            if min(len(payment_ids), len(bank_ids)) < 1:
                 continue
 
             payments = [self.store.get_raw(raw_id) for raw_id in payment_ids]
@@ -191,9 +219,19 @@ class CandidateReviewService:
                 if not (
                     "amount_exact" in codes
                     and "booking_date_exact" in codes
-                    and "bank_name_exact" in codes
-                    and "bank_time_unavailable" in codes
-                    and {"direction_exact", "refund_credit_direction"} & codes
+                    and self._has_exact_bank_identity(codes)
+                    and {
+                        "bank_time_unavailable",
+                        "datetime_exact",
+                        "datetime_close",
+                    }
+                    & codes
+                    and {
+                        "direction_exact",
+                        "refund_credit_direction",
+                        "anchored_refund_credit",
+                    }
+                    & codes
                     and payment.transaction_time is not None
                     and bank.raw_row_number is not None
                 ):
@@ -211,7 +249,7 @@ class CandidateReviewService:
                 self.confirm(
                     candidate_id,
                     actor,
-                    changes={"notes": "按平台交易时间与银行流水行序确定性匹配"},
+                    changes={"notes": "按同日同额多重集与平台时间、银行流水行序确定性匹配"},
                 )
                 confirmed += 1
         return confirmed
@@ -276,7 +314,7 @@ class CandidateReviewService:
         after = {
             **before,
             "candidate_status": "confirmed",
-            "canonical": canonical.to_dict(),
+            "canonical": canonical.to_dict(include_sources=False),
             "changes": changes or {},
         }
         event = CandidateReviewEvent(
@@ -405,8 +443,8 @@ class CandidateReviewService:
                 "is_ambiguous": group.candidate.is_ambiguous,
                 "evidence": [item.to_dict() for item in group.candidate.evidence],
             },
-            "payment": group.payment.to_dict(),
-            "bank": group.bank.to_dict(),
+            "payment": group.payment.to_dict(include_original_row=False),
+            "bank": group.bank.to_dict(include_original_row=False),
             "conflict_candidate_ids": [item.candidate_id for item in group.conflicts],
         }
 

@@ -136,6 +136,10 @@ class AccountBalanceService:
         return tuple(result)
 
     def _internal_products(self) -> tuple[BalanceItem, ...]:
+        snapshot_names = {
+            snapshot.source_account
+            for snapshot in self.store.list_latest_account_balance_snapshots()
+        }
         rows = self.store.connection.execute(
             """
             SELECT source_account, booking_date, amount, description, counterparty
@@ -166,5 +170,5 @@ class AccountBalanceService:
         return tuple(
             BalanceItem(name, balance, latest[name])
             for name, balance in sorted(positions.items())
-            if balance != 0
+            if balance != 0 and name not in snapshot_names
         )

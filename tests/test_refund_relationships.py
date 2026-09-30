@@ -190,6 +190,25 @@ def test_multiple_partial_refunds_can_link_to_one_original(store):
     assert store.get_canonical(second_refund.canonical_id).tx_type == TransactionType.REFUND
 
 
+def test_full_refund_reserves_exact_original_before_earlier_partial_refund(store):
+    exact_original = transaction(1, "-143", "铁路商户")
+    other_original = transaction(1, "-264", "铁路商户")
+    partial_refund = transaction(2, "62.50", "铁路商户退款", status="退款成功")
+    full_refund = transaction(3, "143", "铁路商户退款", status="退款成功")
+    for item in (exact_original, other_original, partial_refund, full_refund):
+        store.add_canonical(item)
+    service = RefundRelationshipService(store)
+    service.generate_candidates()
+
+    assert service.confirm_preferred_refunds("acceptance")["confirmed"] == 2
+    selected = {
+        item.refund_canonical_id: item.original_canonical_id
+        for item in service.list_candidates("confirmed")
+    }
+    assert selected[full_refund.canonical_id] == exact_original.canonical_id
+    assert selected[partial_refund.canonical_id] == other_original.canonical_id
+
+
 def test_confirmed_refunds_cannot_exceed_original_amount(store):
     original = transaction(1, "-100", "测试商户")
     first_refund = transaction(5, "70", "测试商户退款", status="退款成功")

@@ -96,10 +96,14 @@ private data class SummaryState(
     val knownBalance: String = "0",
     val balanceDate: String = "暂无日期",
     val netCashFlow: String = "0",
+    val transactionNetCashFlow: String = "0",
+    val netCashFlowBasis: String = "classified_transactions",
+    val reconciliationAdjustment: String = "0",
     val expense: String = "0",
     val income: String = "0",
     val refunds: String = "0",
-    val excluded: Int = 0,
+    val pendingReviewExcluded: Int = 0,
+    val unclassifiedExcluded: Int = 0,
     val pendingBankAdjustment: String = "0",
 )
 
@@ -137,10 +141,14 @@ private fun ComposeOverview(client: NativeLedgerClient, modifier: Modifier = Mod
                 val data = response.getJSONObject("body").getJSONObject("data")
                 summary = summary.copy(
                     netCashFlow = data.optString("net_cash_flow", "0"),
+                    transactionNetCashFlow = data.optString("transaction_net_cash_flow", "0"),
+                    netCashFlowBasis = data.optString("net_cash_flow_basis", "classified_transactions"),
+                    reconciliationAdjustment = data.optString("asset_reconciliation_adjustment", "0"),
                     expense = data.optString("gross_expense", "0"),
                     income = data.optString("ordinary_income", "0"),
                     refunds = data.optString("refunds", "0"),
-                    excluded = data.optInt("pending_review_excluded_count") + data.optInt("unclassified_excluded_count"),
+                    pendingReviewExcluded = data.optInt("pending_review_excluded_count"),
+                    unclassifiedExcluded = data.optInt("unclassified_excluded_count"),
                 )
             }.onFailure { error = it.message ?: "统计加载失败" }
         }
@@ -171,10 +179,19 @@ private fun ComposeOverview(client: NativeLedgerClient, modifier: Modifier = Mod
         item { BalanceCard(summary) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricRow("收支差额", summary.netCashFlow, "支出", summary.expense)
+                MetricRow(if (summary.netCashFlowBasis == "verified_asset_chain") "结余（资产链）" else "收支差额", summary.netCashFlow, "支出", summary.expense)
                 MetricRow("收入", summary.income, "退款", summary.refunds)
+                if (summary.netCashFlowBasis == "verified_asset_chain") {
+                    Text("交易口径差额 ${money(summary.transactionNetCashFlow)} · 内部转移/理财等资产链调整 ${money(summary.reconciliationAdjustment)}", color = LedgerColors.Muted)
+                }
                 Text(
-                    balanceExplanation(range, summary.knownBalance, summary.netCashFlow, summary.excluded),
+                    balanceExplanation(
+                        range,
+                        summary.knownBalance,
+                        summary.netCashFlow,
+                        summary.pendingReviewExcluded,
+                        summary.unclassifiedExcluded,
+                    ),
                     color = LedgerColors.Muted,
                 )
             }
@@ -188,16 +205,26 @@ private fun ComposeOverview(client: NativeLedgerClient, modifier: Modifier = Mod
     }
 }
 
-private fun balanceExplanation(range: String, knownBalance: String, netCashFlow: String, excluded: Int): String {
+private fun balanceExplanation(
+    range: String,
+    knownBalance: String,
+    netCashFlow: String,
+    pendingReviewExcluded: Int,
+    unclassifiedExcluded: Int,
+): String {
     val known = knownBalance.toBigDecimalOrNull() ?: BigDecimal.ZERO
     val net = netCashFlow.toBigDecimalOrNull() ?: BigDecimal.ZERO
     val base = when {
         range != "all" -> "当前周期的收支差额不与账户余额直接比较；切换到全部账单查看校验"
-        known.compareTo(net) == 0 -> "全部账单收支差额与账户余额一致"
+        known.compareTo(net) == 0 -> "全部账单资产链结余与账户余额一致"
         known > net -> "账户余额比收支差额多 ${money((known - net).toPlainString())}：账单开始前可能有这部分余额未计入，或账单不完整"
         else -> "收支差额比账户余额多 ${money((net - known).toPlainString())}：可能有未记录支出，或账单不完整"
     }
-    return if (excluded > 0) "$base · $excluded 笔待处理交易未计入" else base
+    val details = buildList {
+        if (pendingReviewExcluded > 0) add("$pendingReviewExcluded 笔待人工审核交易未计入")
+        if (unclassifiedExcluded > 0) add("$unclassifiedExcluded 笔已确认但未分类交易未计入")
+    }
+    return if (details.isEmpty()) base else "$base · ${details.joinToString(" · ")}"
 }
 
 @Composable

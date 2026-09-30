@@ -830,7 +830,12 @@ class LedgerStore:
                 observed.import_batch_id,
                 result.raw_transaction.raw_id,
                 int(result.created),
-                json.dumps(observed.to_dict(), ensure_ascii=False, sort_keys=True, default=str),
+                json.dumps(
+                    observed.to_dict(include_original_row=False),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    default=str,
+                ),
                 datetime.now().isoformat(),
             ),
         )

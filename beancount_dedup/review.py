@@ -90,10 +90,20 @@ class ImportReviewService:
                 else:
                     item_type = "existing_linked" if canonical else "existing_unmatched"
                 snapshot = {
-                    "imported_observation": result.imported_observation.to_dict(),
-                    "persisted_raw": result.raw_transaction.to_dict(),
+                    "_snapshot_format": "raw_refs_v1",
+                    "persisted_raw_id": result.raw_transaction.raw_id,
+                    "imported_overrides": _raw_overrides(
+                        result.imported_observation, result.raw_transaction
+                    ),
                     "was_created": result.created,
-                    "affected_canonical": canonical.to_dict() if canonical else None,
+                    "affected_canonical": _canonical_audit_snapshot(
+                        canonical, include_sources=False
+                    ),
+                    "affected_source_raw_ids": (
+                        [row.raw_id for row in canonical.raw_transactions]
+                        if canonical
+                        else []
+                    ),
                 }
                 connection.execute(
                     """
@@ -115,11 +125,19 @@ class ImportReviewService:
             for raw in missing_from_import or []:
                 canonical = self.store.find_canonical_for_raw(raw.raw_id)
                 snapshot = {
+                    "_snapshot_format": "raw_refs_v1",
                     "imported_observation": None,
-                    "persisted_raw": raw.to_dict(),
+                    "persisted_raw_id": raw.raw_id,
                     "was_created": False,
                     "missing_from_import": True,
-                    "affected_canonical": canonical.to_dict() if canonical else None,
+                    "affected_canonical": _canonical_audit_snapshot(
+                        canonical, include_sources=False
+                    ),
+                    "affected_source_raw_ids": (
+                        [row.raw_id for row in canonical.raw_transactions]
+                        if canonical
+                        else []
+                    ),
                 }
                 connection.execute(
                     """
@@ -223,7 +241,7 @@ class ImportReviewService:
         )
         before = {
             "review_status": row["status"],
-            "canonical": canonical.to_dict() if canonical else None,
+            "canonical": _canonical_audit_snapshot(canonical, include_sources=False),
         }
         now = datetime.now()
         with self.store.transaction() as connection:
@@ -244,7 +262,7 @@ class ImportReviewService:
                 canonical = self.store.get_canonical(canonical.canonical_id)
             after = {
                 "review_status": decision,
-                "canonical": canonical.to_dict() if canonical else None,
+                "canonical": _canonical_audit_snapshot(canonical, include_sources=False),
             }
             event = ReviewEvent(
                 event_id=str(uuid.uuid4()),
@@ -365,6 +383,9 @@ class ImportReviewService:
         raw = self.store.get_raw(row["raw_id"])
         if raw is None:
             raise RuntimeError(f"review raw record is missing: {row['raw_id']}")
+        snapshot = json.loads(row["snapshot_json"])
+        if snapshot.get("_snapshot_format") == "raw_refs_v1":
+            snapshot = self._hydrate_review_snapshot(snapshot, raw)
         return ReviewItem(
             review_item_id=row["review_item_id"],
             session_id=row["session_id"],
@@ -374,11 +395,43 @@ class ImportReviewService:
             else None,
             item_type=row["item_type"],
             status=row["status"],
-            snapshot=json.loads(row["snapshot_json"]),
+            snapshot=snapshot,
             created_at=datetime.fromisoformat(row["created_at"]),
             reviewed_at=datetime.fromisoformat(row["reviewed_at"]) if row["reviewed_at"] else None,
             reviewed_by=row["reviewed_by"],
         )
+
+    def _hydrate_review_snapshot(
+        self, snapshot: dict[str, Any], persisted: RawTransaction
+    ) -> dict[str, Any]:
+        persisted_data = persisted.to_dict(include_original_row=False)
+        imported = None
+        if "imported_observation" not in snapshot:
+            imported = {**persisted_data, **snapshot.get("imported_overrides", {})}
+        affected = snapshot.get("affected_canonical")
+        if affected is not None:
+            current = self.store.get_canonical(affected["canonical_id"])
+            current_sources = current.to_dict()["sources"] if current is not None else []
+            source_ids = set(snapshot.get("affected_source_raw_ids", []))
+            sources = [
+                source
+                for source in current_sources
+                if source["raw_transaction"]["raw_id"] in source_ids
+            ]
+            for source in sources:
+                source["raw_transaction"].pop("original_row", None)
+            affected = {**affected, "sources": sources}
+        return {
+            "imported_observation": imported,
+            "persisted_raw": persisted_data,
+            "was_created": snapshot["was_created"],
+            "affected_canonical": affected,
+            **(
+                {"missing_from_import": True}
+                if snapshot.get("missing_from_import")
+                else {}
+            ),
+        }
 
     @staticmethod
     def _session_from_row(row: Any) -> ReviewSession:
@@ -391,3 +444,26 @@ class ImportReviewService:
             if row["completed_at"]
             else None,
         )
+
+
+def _canonical_audit_snapshot(
+    canonical: CanonicalTransaction | None, *, include_sources: bool = True
+) -> dict[str, Any] | None:
+    """Keep audit semantics without duplicating immutable raw payloads."""
+
+    if canonical is None:
+        return None
+    snapshot = canonical.to_dict(include_sources=include_sources)
+    for source in snapshot.get("sources", []):
+        source.get("raw_transaction", {}).pop("original_row", None)
+    return snapshot
+
+
+def _raw_overrides(imported: RawTransaction, persisted: RawTransaction) -> dict[str, Any]:
+    imported_data = imported.to_dict(include_original_row=False)
+    persisted_data = persisted.to_dict(include_original_row=False)
+    return {
+        key: value
+        for key, value in imported_data.items()
+        if persisted_data.get(key) != value
+    }

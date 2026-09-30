@@ -154,6 +154,36 @@ def test_verified_wallet_snapshots_are_auditable_and_included_in_known_balance(
     )
 
 
+def test_verified_investment_snapshot_replaces_stale_statement_inference(tmp_path: Path) -> None:
+    with LedgerStore(tmp_path / "ledger.sqlite3") as store:
+        store.add_raw(
+            _raw(
+                "zhao-in",
+                account="招商银行",
+                day=date(2026, 8, 1),
+                amount="-10000",
+                balance="200",
+                description="朝朝宝转入",
+            )
+        )
+        store.record_account_balance_snapshot(
+            "bank",
+            "招商银行朝朝宝",
+            "7722.94",
+            date(2026, 9, 29),
+            created_by="local-user",
+            note="bank app total minus card cash balance",
+            balance_kind="investment",
+        )
+
+        report = AccountBalanceService(store).summarize()
+
+    assert report["internal_products"] == []
+    assert report["internal_product_total"] == "0"
+    assert report["snapshot_total"] == "7722.94"
+    assert report["known_balance"] == "7922.94"
+
+
 def test_bank_balance_rolls_forward_with_later_card_bound_platform_rows(tmp_path: Path) -> None:
     with LedgerStore(tmp_path / "ledger.sqlite3") as store:
         store.add_raw(

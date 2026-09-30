@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from beancount_dedup.account_balances import AccountBalanceService
+from beancount_dedup.aggregate_matcher import AggregateMatcher
 from beancount_dedup.balance_reconciliation import BalanceReconciliationService
 from beancount_dedup.candidate_review import CandidateReviewService
 from beancount_dedup.canonical_matcher import ConservativeMatcher
+from beancount_dedup.interval_reconciliation import IntervalReconciliationService
 from beancount_dedup.ledger_store import LedgerStore
 from beancount_dedup.portable_archive import (
     TABLE_ORDER,
@@ -25,6 +27,7 @@ from beancount_dedup.portable_archive import (
 from beancount_dedup.refund_relationships import RefundRelationshipService
 from beancount_dedup.review import ImportReviewService
 from beancount_dedup.statement_importer import StatementImporter
+from beancount_dedup.statistics import StatisticsService
 from beancount_dedup.transaction_classification import TransactionClassificationService
 
 FORMAT_BY_FOLDER_SUFFIX = {
@@ -72,6 +75,11 @@ def discover_statements(root: Path) -> tuple[list[StatementFile], list[FileResul
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
         relative = path.relative_to(root).as_posix()
         folder = path.parent.name
+        if path.name.startswith("手动修正-"):
+            skipped.append(
+                FileResult(relative, "", "skipped", message="手工证据源由同目录规范化账单覆盖")
+            )
+            continue
         format_id = FORMAT_BY_FOLDER_SUFFIX.get((folder, path.suffix.lower()))
         if format_id:
             statements.append(StatementFile(path, relative, format_id, folder))
@@ -140,6 +148,9 @@ def run_acceptance(
         ordered_statement_match_count = CandidateReviewService(
             store
         ).confirm_ordered_statement_matches("full-ledger-acceptance")
+        aggregate_match_count = AggregateMatcher(store).confirm_unique(
+            "full-ledger-acceptance"
+        )
         pending_match_candidate_count = len(ConservativeMatcher(store).list_candidates("pending"))
         safe_confirmed_count = ImportReviewService(store).confirm_unmatched_without_candidates(
             "full-ledger-acceptance"
@@ -164,6 +175,8 @@ def run_acceptance(
             )
         account_balance = AccountBalanceService(store).summarize()
         balance_reconciliation = BalanceReconciliationService(store).summarize()
+        interval_reconciliation = IntervalReconciliationService(store).summarize()
+        statistics = StatisticsService(store).summarize().to_dict()
         counts = _table_counts(store)
         if not failures:
             export_portable_archive(store, archive)
@@ -197,11 +210,16 @@ def run_acceptance(
         "exact_payment_match_count": exact_payment_match_count,
         "unique_statement_match_count": unique_statement_match_count,
         "ordered_statement_match_count": ordered_statement_match_count,
+        "aggregate_match_count": aggregate_match_count,
         "safe_classification_count": safe_classification_count,
         "safe_refund_count": refund_resolution["confirmed"],
         "refund_warning_count": refund_resolution["warnings"],
         "account_balance": account_balance,
         "balance_reconciliation": balance_reconciliation,
+        "interval_reconciliation": _compact_interval_reconciliation(
+            interval_reconciliation
+        ),
+        "statistics": statistics,
         "pending_match_candidate_count": pending_match_candidate_count,
         "files": [asdict(item) for item in results],
     }
@@ -215,6 +233,29 @@ def _table_counts(store: LedgerStore) -> dict[str, int]:
     return {
         table: int(store.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
         for table in TABLE_ORDER
+    }
+
+
+def _compact_interval_reconciliation(report: dict[str, Any]) -> dict[str, Any]:
+    """Keep the release gate readable; row evidence stays reproducible from the DB."""
+
+    return {
+        key: value
+        for key, value in report.items()
+        if key not in {"accounts", "wallet_accounts", "aggregate_match_candidates"}
+    } | {
+        "accounts": [
+            {key: value for key, value in item.items() if key != "intervals"}
+            for item in report["accounts"]
+        ],
+        "wallet_accounts": [
+            {key: value for key, value in item.items() if key != "intervals"}
+            for item in report["wallet_accounts"]
+        ],
+        "aggregate_match_candidate_count": len(report["aggregate_match_candidates"]),
+        "unique_aggregate_match_candidate_count": sum(
+            item["is_unique"] for item in report["aggregate_match_candidates"]
+        ),
     }
 
 
@@ -236,7 +277,20 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, RuntimeError, ValueError) as exc:
         print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "success": report["success"],
+                "database": report["database"],
+                "portable_archive": report["portable_archive"],
+                "restored_database": report["restored_database"],
+                "statistics": report["statistics"],
+                "interval_reconciliation": report["interval_reconciliation"],
+            },
+            ensure_ascii=True,
+            indent=2,
+        )
+    )
     return 0 if report["success"] else 1
 
 

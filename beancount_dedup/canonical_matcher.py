@@ -57,12 +57,28 @@ class ConservativeMatcher:
         for bank in banks:
             bank_index.setdefault(bank.amount, []).append(bank)
 
-        candidates = []
+        exact_candidates = []
+        fuzzy_candidates = []
         for payment in payments:
             for bank in bank_index.get(payment.amount, []):
                 candidate = self._candidate(payment, bank)
                 if candidate is not None:
-                    candidates.append(candidate)
+                    codes = {item.code for item in candidate.evidence}
+                    if "match_phase_exact" in codes:
+                        exact_candidates.append(candidate)
+                    else:
+                        fuzzy_candidates.append(candidate)
+        # Exact observations always win.  Fuzzy matching is a fallback only;
+        # it must never add alternatives around a row that already has an
+        # exact candidate.
+        exact_payment_ids = {item.payment_raw_id for item in exact_candidates}
+        exact_bank_ids = {item.bank_raw_id for item in exact_candidates}
+        candidates = exact_candidates + [
+            item
+            for item in fuzzy_candidates
+            if item.payment_raw_id not in exact_payment_ids
+            and item.bank_raw_id not in exact_bank_ids
+        ]
         candidates = self._mark_ambiguity(candidates)
         self._persist(candidates)
         return candidates
@@ -97,7 +113,10 @@ class ConservativeMatcher:
             return None
 
         refund_credit_pair = _is_refund_credit_pair(payment, bank)
-        if payment.direction != bank.direction and not refund_credit_pair:
+        anchored_refund_credit = _is_anchored_refund_credit(payment, bank, day_difference)
+        if payment.direction != bank.direction and not (
+            refund_credit_pair or anchored_refund_credit
+        ):
             return None
         payment_rail = _bank_payment_rail(bank)
         if payment_rail is not None and payment.source != payment_rail:
@@ -116,7 +135,13 @@ class ConservativeMatcher:
         evidence = [MatchEvidence("amount_exact", Decimal("0.25"))]
         evidence.append(
             MatchEvidence(
-                "refund_credit_direction" if refund_credit_pair else "direction_exact",
+                (
+                    "refund_credit_direction"
+                    if refund_credit_pair
+                    else "anchored_refund_credit"
+                    if anchored_refund_credit
+                    else "direction_exact"
+                ),
                 Decimal("0.10"),
             )
         )
@@ -147,6 +172,18 @@ class ConservativeMatcher:
             evidence.append(MatchEvidence("bank_time_unavailable", Decimal("0.00")))
         if merchant_match:
             evidence.append(MatchEvidence("merchant_semantic_match", Decimal("0.10")))
+
+        exact_phase = bool(
+            day_difference == 0
+            and (suffix_match or bank_name_match)
+            and (exact_time or merchant_match or payment_rail is not None)
+        )
+        evidence.append(
+            MatchEvidence(
+                "match_phase_exact" if exact_phase else "match_phase_fuzzy",
+                Decimal("0.00"),
+            )
+        )
 
         # A one-day settlement difference is plausible, but amount and bank
         # alone cannot distinguish two unrelated purchases on adjacent days.
@@ -249,6 +286,13 @@ def _bank_name_matches(payment_method: str, bank_method: str) -> bool:
     aliases = {
         "cmb": ("招商银行", "招商", "cmb"),
         "icbc": ("工商银行", "工行", "icbc"),
+        "cqrcb": (
+            "重庆农村商业银行",
+            "重庆农商行",
+            "农村商业银行",
+            "农商行",
+            "cqrcb",
+        ),
     }
     payment_lower = payment_method.lower()
     bank_lower = bank_method.lower()
@@ -280,6 +324,27 @@ def _is_refund_credit_pair(payment: RawTransaction, bank: RawTransaction) -> boo
     return any(marker in payment_text for marker in markers) and any(
         marker in bank_text for marker in markers
     )
+
+
+def _is_anchored_refund_credit(
+    payment: RawTransaction, bank: RawTransaction, day_difference: int
+) -> bool:
+    """Allow a platform refund to match a generic bank credit via its balance chain.
+
+    Some banks export refunds as generic credits or the real counterparty rather
+    than the platform merchant.  Same-card, same-amount and same-day constraints
+    are applied by the caller; the non-null bank balance supplies the auditable
+    account-chain anchor.
+    """
+
+    if day_difference != 0 or payment.amount <= 0 or bank.amount <= 0:
+        return False
+    if bank.direction != "income" or bank.balance is None:
+        return False
+    text = " ".join(
+        (payment.merchant, payment.counterparty, payment.description, payment.status)
+    ).lower()
+    return any(marker in text for marker in ("退款", "退回", "refund"))
 
 
 def _bank_payment_rail(bank: RawTransaction) -> Platform | None:

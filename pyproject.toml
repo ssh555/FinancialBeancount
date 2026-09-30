@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "financial-beancount"
-version = "0.2.0"
+version = "0.2.6"
 description = "Local Beancount converter and deduplicator for Alipay, WeChat Pay, bank statements (CSV, XLSX, PDF)"
 readme = "README.md"
 license = "MIT"

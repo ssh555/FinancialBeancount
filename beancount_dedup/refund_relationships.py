@@ -99,7 +99,10 @@ class RefundRelationshipService:
 
         ordered_groups = sorted(
             groups.values(),
-            key=lambda items: self._transaction_order(items[0].refund_canonical_id),
+            key=lambda items: (
+                not any("amount_full" in item.evidence for item in items),
+                self._transaction_order(items[0].refund_canonical_id),
+            ),
         )
         confirmed = 0
         warnings = 0

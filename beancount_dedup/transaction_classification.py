@@ -16,7 +16,7 @@ from .ledger_models import CanonicalTransaction
 from .ledger_store import LedgerStore
 from .models import TransactionType
 
-CLASSIFIER_VERSION = "non-consumption-v1"
+CLASSIFIER_VERSION = "non-consumption-v3"
 
 CLASSIFICATION_RULES = (
     (
@@ -50,8 +50,28 @@ CLASSIFICATION_RULES = (
             "转到余额宝",
             "转出到银行卡",
             "本人转账",
+            "充值完成",
+            "提现已到账",
         ),
-        Decimal("0.88"),
+        Decimal("0.96"),
+    ),
+    (
+        TransactionType.PREAUTHORIZATION,
+        "未发生或已关闭交易",
+        ("交易关闭",),
+        Decimal("0.99"),
+    ),
+    (
+        TransactionType.REFUND,
+        "退款",
+        ("退款成功",),
+        Decimal("0.99"),
+    ),
+    (
+        TransactionType.TRANSFER,
+        "企业支付（非个人收支）",
+        ("因公付",),
+        Decimal("0.99"),
     ),
 )
 
@@ -88,11 +108,13 @@ class TransactionClassificationService:
 
     def generate_candidates(self) -> list[ClassificationCandidate]:
         internal_product_ids = self._internal_product_canonical_ids()
+        bank_backed_ids = self._bank_backed_canonical_ids()
         candidates = []
         for transaction in self.store.list_canonical():
             candidate = self._classify(
                 transaction,
                 internal_product=transaction.canonical_id in internal_product_ids,
+                bank_backed=transaction.canonical_id in bank_backed_ids,
             )
             if candidate:
                 candidates.append(candidate)
@@ -237,7 +259,7 @@ class TransactionClassificationService:
             JOIN raw_transactions AS raw ON raw.raw_id = links.raw_id
             WHERE raw.source = 'bank'
               AND (
-                    raw.description IN ('朝朝宝转入', '朝朝宝转出')
+                    raw.description IN ('朝朝宝转入', '朝朝宝转出', '基金赎回')
                     OR (
                         raw.description = '基金购买'
                         AND raw.counterparty NOT LIKE '%基金销售%'
@@ -247,9 +269,23 @@ class TransactionClassificationService:
         ).fetchall()
         return {row["canonical_id"] for row in rows}
 
+    def _bank_backed_canonical_ids(self) -> set[str]:
+        rows = self.store.connection.execute(
+            """
+            SELECT DISTINCT links.canonical_id
+            FROM source_record_links AS links
+            JOIN raw_transactions AS raw ON raw.raw_id = links.raw_id
+            WHERE raw.source = 'bank'
+            """
+        ).fetchall()
+        return {row["canonical_id"] for row in rows}
+
     @staticmethod
     def _classify(
-        transaction: CanonicalTransaction, *, internal_product: bool = False
+        transaction: CanonicalTransaction,
+        *,
+        internal_product: bool = False,
+        bank_backed: bool = False,
     ) -> ClassificationCandidate | None:
         if transaction.tx_type not in {
             TransactionType.EXPENSE,
@@ -270,13 +306,31 @@ class TransactionClassificationService:
             (
                 transaction.merchant,
                 transaction.normalized_merchant,
+                transaction.payment_channel,
+                transaction.funding_account,
                 transaction.status,
                 transaction.notes,
             )
         ).lower()
+        if (
+            transaction.tx_type == TransactionType.UNKNOWN
+            and transaction.payment_channel in {"alipay", "wechat"}
+            and "银行" in transaction.merchant
+            and transaction.funding_account in {"余额", "支付宝余额", "微信零钱"}
+        ):
+            return ClassificationCandidate(
+                candidate_id=str(uuid.uuid4()),
+                canonical_id=transaction.canonical_id,
+                proposed_type=TransactionType.TRANSFER,
+                proposed_category="支付账户与银行卡互转",
+                confidence=Decimal("0.96"),
+                evidence=("funding-account:wallet_to_bank",),
+            )
         for proposed_type, category, keywords, confidence in CLASSIFICATION_RULES:
             matched = next((keyword for keyword in keywords if keyword.lower() in text), None)
             if matched:
+                if matched == "交易关闭" and bank_backed:
+                    continue
                 return ClassificationCandidate(
                     candidate_id=str(uuid.uuid4()),
                     canonical_id=transaction.canonical_id,

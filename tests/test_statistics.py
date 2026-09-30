@@ -3,9 +3,9 @@
 from datetime import date
 
 import pytest
-from beancount_dedup.ledger_models import CanonicalTransaction
+from beancount_dedup.ledger_models import CanonicalTransaction, RawTransaction
 from beancount_dedup.ledger_store import LedgerStore
-from beancount_dedup.models import TransactionType
+from beancount_dedup.models import Platform, TransactionType
 from beancount_dedup.refund_relationships import RefundRelationshipService
 from beancount_dedup.statistics import StatisticsService
 from beancount_dedup.transaction_classification import TransactionClassificationService
@@ -85,6 +85,19 @@ def test_unknown_transactions_are_explicitly_reported_as_excluded(store):
     assert report.to_dict()["unclassified_excluded_count"] == 1
 
 
+def test_explicit_unpaired_refund_is_counted_without_inventing_a_relationship(store):
+    refund = transaction(8, "84", "商户退款", TransactionType.REFUND)
+    store.add_canonical(refund)
+
+    report = StatisticsService(store).summarize()
+    monthly = StatisticsService(store).timeline("month")
+
+    assert report.refunds == 84
+    assert report.net_cash_flow == 84
+    assert report.refund_count == 1
+    assert monthly[0]["refunds"] == "84"
+
+
 def test_statistics_date_filter_applies_to_cash_flow_and_refund_date(store):
     old_expense = transaction(1, "-100", "星巴克", TransactionType.EXPENSE, "餐饮")
     refund = transaction(5, "100", "星巴克退款", TransactionType.INCOME)
@@ -115,6 +128,51 @@ def test_statistics_date_filter_applies_to_cash_flow_and_refund_date(store):
 def test_reversed_statistics_range_is_rejected(store):
     with pytest.raises(ValueError, match="date_from"):
         StatisticsService(store).summarize(date(2026, 4, 1), date(2026, 3, 1))
+
+
+def test_full_scope_uses_verified_zero_opening_asset_chain(store):
+    raw = RawTransaction(
+        source=Platform.BANK,
+        source_account="测试银行",
+        booking_date=date(2026, 3, 1),
+        amount="100",
+        balance="100",
+        direction="income",
+        transaction_id="opening-income",
+        original_row={},
+    )
+    stored = store.add_raw(raw).raw_transaction
+    item = transaction(1, "100", "收入", TransactionType.INCOME)
+    item.add_source(stored, confidence="1", reasons=("test",), matcher_version="test")
+    store.add_canonical(item)
+
+    report = StatisticsService(store).summarize()
+
+    assert report.net_cash_flow == 100
+    assert report.transaction_net_cash_flow == 100
+    assert report.to_dict()["net_cash_flow_basis"] == "verified_asset_chain"
+
+
+def test_nonzero_opening_balance_keeps_classified_transaction_flow(store):
+    raw = RawTransaction(
+        source=Platform.BANK,
+        source_account="测试银行",
+        booking_date=date(2026, 3, 1),
+        amount="10",
+        balance="110",
+        direction="income",
+        transaction_id="nonzero-opening",
+        original_row={},
+    )
+    stored = store.add_raw(raw).raw_transaction
+    item = transaction(1, "10", "收入", TransactionType.INCOME)
+    item.add_source(stored, confidence="1", reasons=("test",), matcher_version="test")
+    store.add_canonical(item)
+
+    report = StatisticsService(store).summarize()
+
+    assert report.net_cash_flow == 10
+    assert report.to_dict()["net_cash_flow_basis"] == "classified_transactions"
 
 
 def test_timeline_groups_income_and_expense_by_calendar_period(store):

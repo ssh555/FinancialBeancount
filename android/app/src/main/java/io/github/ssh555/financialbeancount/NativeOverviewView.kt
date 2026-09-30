@@ -26,7 +26,8 @@ class NativeOverviewView(
     private var grouping = "month"
     private var knownBalanceValue: BigDecimal? = null
     private var netCashFlowValue: BigDecimal? = null
-    private var excludedCount = 0
+    private var pendingReviewExcludedCount = 0
+    private var unclassifiedExcludedCount = 0
     private val reconciliationNote = TextView(context).apply {
         setTextColor(NativeUi.muted)
         setPadding(dp(4), dp(6), dp(4), dp(8))
@@ -91,11 +92,18 @@ class NativeOverviewView(
         client.request("GET", "/api/v1/statistics/summary?$query") { result ->
             result.onSuccess { response ->
                 val data = response.getJSONObject("body").getJSONObject("data")
-                excludedCount = data.optInt("pending_review_excluded_count") + data.optInt("unclassified_excluded_count")
+                pendingReviewExcludedCount = data.optInt("pending_review_excluded_count")
+                unclassifiedExcludedCount = data.optInt("unclassified_excluded_count")
                 netCashFlowValue = data.getString("net_cash_flow").toBigDecimal()
                 summary.removeAllViews()
-                summary.addView(metricRow("收支差额", data.getString("net_cash_flow"), "支出", data.getString("gross_expense")))
+                val verified = data.optString("net_cash_flow_basis") == "verified_asset_chain"
+                summary.addView(metricRow(if (verified) "结余（资产链）" else "收支差额", data.getString("net_cash_flow"), "支出", data.getString("gross_expense")))
                 summary.addView(metricRow("收入", data.getString("ordinary_income"), "退款", data.getString("refunds")))
+                if (verified) summary.addView(TextView(context).apply {
+                    text = "交易口径差额 ${money(data.optString("transaction_net_cash_flow", "0"))} · 内部转移/理财等资产链调整 ${money(data.optString("asset_reconciliation_adjustment", "0"))}"
+                    setTextColor(NativeUi.muted)
+                    setPadding(dp(4), dp(4), dp(4), dp(4))
+                })
                 summary.addView(reconciliationNote)
                 updateReconciliationNote()
                 NativeUi.styleTree(summary)
@@ -130,11 +138,15 @@ class NativeOverviewView(
         val base = when {
             range != "all" || sourceFilter.query().isNotBlank() -> "当前筛选的收支差额不与账户余额直接比较；切换到全部账单与全部来源查看校验"
             known == null || net == null -> "正在校验全部账单与账户余额…"
-            known.compareTo(net) == 0 -> "全部账单收支差额与账户余额一致"
+            known.compareTo(net) == 0 -> "全部账单资产链结余与账户余额一致"
             known > net -> "账户余额比收支差额多 ${money((known - net).toPlainString())}：账单开始前可能有这部分余额未计入，或账单不完整"
             else -> "收支差额比账户余额多 ${money((net - known).toPlainString())}：可能有未记录支出，或账单不完整"
         }
-        reconciliationNote.text = if (excludedCount > 0) "$base · $excludedCount 笔待处理交易未计入" else base
+        val details = buildList {
+            if (pendingReviewExcludedCount > 0) add("$pendingReviewExcludedCount 笔待人工审核交易未计入")
+            if (unclassifiedExcludedCount > 0) add("$unclassifiedExcludedCount 笔已确认但未分类交易未计入")
+        }
+        reconciliationNote.text = if (details.isEmpty()) base else "$base · ${details.joinToString(" · ")}"
     }
 
     private fun periodChooser(items: List<Pair<String, String>>, selectedValue: String, select: (String) -> Unit): View =

@@ -125,6 +125,123 @@ def test_wallet_funded_payment_never_matches_bank_by_time_and_merchant(store):
     assert ConservativeMatcher(store).generate_candidates() == []
 
 
+def test_cqrcb_name_is_independent_identity_for_same_day_amount(store):
+    add(
+        store,
+        raw(
+            Platform.WECHAT,
+            "payment-cqrcb",
+            when=datetime(2022, 9, 2, 10, 0),
+            merchant="北京理工大学",
+            payment_method="重庆农商行储蓄卡(6235)",
+            suffix="6235",
+            amount="-5500",
+        ),
+        replace(
+            raw(
+                Platform.BANK,
+                "bank-cqrcb",
+                when=None,
+                merchant="1250428201",
+                payment_method="重庆农村商业银行",
+                suffix=None,
+                amount="-5500",
+            ),
+            booking_date=date(2022, 9, 2),
+        ),
+    )
+
+    candidates = ConservativeMatcher(store).generate_candidates()
+
+    assert len(candidates) == 1
+    assert {item.code for item in candidates[0].evidence} >= {
+        "amount_exact",
+        "booking_date_exact",
+        "bank_name_exact",
+    }
+
+
+def test_exact_candidate_suppresses_fuzzy_fallback_for_same_payment(store):
+    payment, exact_bank, fuzzy_bank = add(
+        store,
+        raw(
+            Platform.ALIPAY,
+            "payment-phased",
+            when=datetime(2026, 3, 1, 10, 0),
+            merchant="高德打车",
+            payment_method="招商银行储蓄卡(5066)",
+            suffix="5066",
+        ),
+        raw(
+            Platform.BANK,
+            "bank-exact",
+            when=datetime(2026, 3, 1, 10, 0),
+            merchant="高德信息技术有限公司",
+            payment_method="招商银行",
+            suffix="5066",
+        ),
+        raw(
+            Platform.BANK,
+            "bank-fuzzy",
+            when=None,
+            merchant="未知商户",
+            payment_method="招商银行",
+            suffix="5066",
+        ),
+    )
+
+    candidates = ConservativeMatcher(store).generate_candidates()
+
+    assert [(item.payment_raw_id, item.bank_raw_id) for item in candidates] == [
+        (payment.raw_id, exact_bank.raw_id)
+    ]
+    assert fuzzy_bank.raw_id not in {item.bank_raw_id for item in candidates}
+    assert "match_phase_exact" in {item.code for item in candidates[0].evidence}
+
+
+def test_refund_can_use_same_day_bank_balance_when_bank_text_is_generic(store):
+    payment, bank = add(
+        store,
+        replace(
+            raw(
+                Platform.ALIPAY,
+                "refund-platform",
+                when=datetime(2026, 2, 1, 12, 0),
+                merchant="南极人专卖店",
+                payment_method="重庆农村商业银行储蓄卡(6235)",
+                suffix="6235",
+                amount="84",
+            ),
+            direction="neutral",
+            status="退款成功",
+        ),
+        replace(
+            raw(
+                Platform.BANK,
+                "refund-bank",
+                when=None,
+                merchant="",
+                payment_method="重庆农村商业银行",
+                suffix=None,
+                amount="84",
+            ),
+            direction="income",
+            booking_date=date(2026, 2, 1),
+            balance=Decimal("6739.53"),
+        ),
+    )
+
+    candidates = ConservativeMatcher(store).generate_candidates()
+
+    assert [(item.payment_raw_id, item.bank_raw_id) for item in candidates] == [
+        (payment.raw_id, bank.raw_id)
+    ]
+    assert "anchored_refund_credit" in {
+        item.code for item in candidates[0].evidence
+    }
+    assert "match_phase_fuzzy" in {item.code for item in candidates[0].evidence}
+
+
 def test_internal_product_row_never_matches_platform_payment(store):
     _, bank = add(
         store,
@@ -218,7 +335,7 @@ def test_same_amount_multiple_bank_records_are_marked_ambiguous(store):
     assert all(candidate.status == "pending" for candidate in candidates)
 
 
-def test_lower_scoring_competing_candidate_is_still_ambiguous(store):
+def test_lower_scoring_fuzzy_candidate_is_suppressed_by_exact_match(store):
     add(
         store,
         raw(
@@ -249,9 +366,9 @@ def test_lower_scoring_competing_candidate_is_still_ambiguous(store):
 
     candidates = ConservativeMatcher(store).generate_candidates()
 
-    assert len(candidates) == 2
-    assert candidates[0].confidence != candidates[1].confidence
-    assert all(candidate.is_ambiguous for candidate in candidates)
+    assert len(candidates) == 1
+    assert candidates[0].is_ambiguous is False
+    assert "match_phase_exact" in {item.code for item in candidates[0].evidence}
 
 
 def test_persisted_candidates_can_be_loaded_for_review(store):
