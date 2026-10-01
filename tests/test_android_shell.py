@@ -51,6 +51,16 @@ def test_android_shell_reuses_core_and_limits_network_to_updates() -> None:
         assert stage in updater and stage in activity
     assert "LinearProgressIndicator" in activity
     assert 'progressText.text = "$value%"' in activity
+    assert 'setPositiveButton("重试") { _, _ -> checkForUpdates() }' in activity
+    assert 'setPositiveButton("重试下载") { _, _ -> downloadAndInstall(update) }' in activity
+    assert "generateSequence<Throwable>(error)" in activity
+    assert "连接 GitHub 超时" in activity
+    assert "开启 Clash VPN 后重试" in activity
+    client = (
+        ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeLedgerClient.kt"
+    ).read_text(encoding="utf-8")
+    assert "Executors.newSingleThreadExecutor()" in client
+    assert "Executors.newFixedThreadPool" not in client
 
 
 def test_android_overview_handles_empty_balance_date_and_fits_period_controls() -> None:
@@ -229,7 +239,7 @@ def test_native_android_overview_uses_async_core_client() -> None:
     overview = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/NativeOverviewView.kt"
     ).read_text(encoding="utf-8")
-    assert "Executors.newFixedThreadPool(3)" in client
+    assert "Executors.newSingleThreadExecutor()" in client
     assert 'getModule("beancount_dedup.android_bridge")' in client
     assert "responseCache" in client
     assert "fun invalidateCache()" in client

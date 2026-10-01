@@ -20,6 +20,7 @@ import com.google.android.material.progressindicator.LinearProgressIndicator
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.net.SocketTimeoutException
 import kotlin.concurrent.thread
 
 private const val MAX_IMPORT_BYTES = 50L * 1024 * 1024
@@ -128,11 +129,7 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
             } catch (error: Exception) {
                 runOnUiThread {
                     checking.dismiss()
-                    MaterialAlertDialogBuilder(this)
-                        .setTitle("检查更新失败")
-                        .setMessage(updateErrorMessage(error))
-                        .setPositiveButton("确定", null)
-                        .show()
+                    showUpdateCheckError(error)
                 }
             }
         }
@@ -215,22 +212,40 @@ class MainActivity : ComponentActivity(), NativeDataView.Host {
             } catch (error: Exception) {
                 runOnUiThread {
                     downloading.dismiss()
-                    MaterialAlertDialogBuilder(this)
-                        .setTitle("更新失败")
-                        .setMessage(updateErrorMessage(error))
-                        .setPositiveButton("确定", null)
-                        .show()
+                    showUpdateDownloadError(update, error)
                 }
             }
         }
     }
 
-    private fun updateErrorMessage(error: Exception): String =
-        if (error is IOException || error.cause is IOException) {
+    private fun showUpdateCheckError(error: Exception) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("检查更新失败")
+            .setMessage(updateErrorMessage(error))
+            .setPositiveButton("重试") { _, _ -> checkForUpdates() }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun showUpdateDownloadError(update: AndroidUpdateInfo, error: Exception) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("更新失败")
+            .setMessage(updateErrorMessage(error))
+            .setPositiveButton("重试下载") { _, _ -> downloadAndInstall(update) }
+            .setNegativeButton("稍后", null)
+            .show()
+    }
+
+    private fun updateErrorMessage(error: Exception): String {
+        val causes = generateSequence<Throwable>(error) { it.cause }.toList()
+        return if (causes.any { it is SocketTimeoutException }) {
+            "连接 GitHub 超时。请检查网络；若当前网络无法访问 GitHub，请开启 Clash VPN 后重试。"
+        } else if (causes.any { it is IOException }) {
             "无法连接 GitHub。请检查网络；若当前网络无法访问 GitHub，请开启 Clash VPN 后重试。"
         } else {
             error.message ?: "更新操作失败"
         }
+    }
 
     override fun onResume() {
         super.onResume()

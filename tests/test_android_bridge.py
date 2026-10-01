@@ -1,5 +1,6 @@
 import base64
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -59,6 +60,22 @@ def test_android_bridge_rejects_non_object_body_and_relative_database(tmp_path: 
         )
     with pytest.raises(ValueError, match="absolute"):
         dispatch("ledger.sqlite3", '{"method":"GET","target":"/api/v1/health"}')
+
+
+def test_android_bridge_serializes_concurrent_access_to_one_ledger(tmp_path: Path) -> None:
+    database = (tmp_path / "ledger.sqlite3").resolve()
+    requests = [
+        '{"method":"GET","target":"/api/v1/health"}',
+        '{"method":"GET","target":"/api/v1/statistics/summary"}',
+        '{"method":"GET","target":"/api/v1/transactions?page_size=10"}',
+    ] * 8
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        responses = list(executor.map(lambda request: dispatch(str(database), request), requests))
+
+    decoded = [json.loads(response) for response in responses]
+    assert len(decoded) == 24
+    assert all(response["status"] == 200 for response in decoded)
 
 
 def test_android_web_assets_are_allowlisted() -> None:
