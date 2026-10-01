@@ -10,9 +10,7 @@ import java.util.concurrent.Executors
 
 class NativeLedgerClient(context: Context) : AutoCloseable {
     private val appContext = context.applicationContext
-    // Every screen shares one app-private SQLite ledger. Preserve request order so page switches
-    // cannot overlap schema checks and writes from separate connections.
-    private val executor = Executors.newSingleThreadExecutor()
+    private val executor = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
     private val responseCache = object : LinkedHashMap<String, String>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 64

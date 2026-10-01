@@ -7,7 +7,6 @@ import binascii
 import json
 import os
 import tempfile
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -15,16 +14,9 @@ from .ledger_store import LedgerStore
 from .mobile_api import MobileLedgerApi, load_web_asset
 from .portable_archive import import_portable_archive, inspect_portable_archive
 
-_DATABASE_LOCK = threading.RLock()
-
 
 def dispatch(database_path: str, request_json: str) -> str:
     """Dispatch one native request without opening a socket or exposing filesystem access."""
-    with _DATABASE_LOCK:
-        return _dispatch(database_path, request_json)
-
-
-def _dispatch(database_path: str, request_json: str) -> str:
     request = _object(json.loads(request_json))
     method = _text(request, "method").upper()
     target = _text(request, "target")
@@ -45,11 +37,6 @@ def _dispatch(database_path: str, request_json: str) -> str:
 
 def restore_archive(database_path: str, content_base64: str) -> str:
     """Validate and atomically replace the app-private ledger with a portable archive."""
-    with _DATABASE_LOCK:
-        return _restore_archive(database_path, content_base64)
-
-
-def _restore_archive(database_path: str, content_base64: str) -> str:
     destination = _private_database_path(database_path)
     try:
         content = base64.b64decode(content_base64, validate=True)
