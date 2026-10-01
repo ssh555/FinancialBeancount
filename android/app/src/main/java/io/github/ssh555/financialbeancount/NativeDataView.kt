@@ -48,7 +48,9 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         importButton.text = "导入队列"
         importButton.minHeight = dp(48)
         importButton.isEnabled = false
-        importButton.setOnClickListener { importNext(0, 0, 0) }
+        importButton.setOnClickListener {
+            importNext(items.filter { it.status == "等待导入" }, 0, 0, 0)
+        }
         addView(importButton)
         progress.gravity = Gravity.CENTER
         progress.setPadding(0, dp(10), 0, dp(10))
@@ -229,8 +231,7 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         }
     }
 
-    private fun importNext(index: Int, succeeded: Int, failed: Int) {
-        val selected = items.filter { it.status == "等待导入" }
+    private fun importNext(selected: List<QueueItem>, index: Int, succeeded: Int, failed: Int) {
         if (index >= selected.size) {
             setBusy(false, "导入完成：成功 $succeeded 个，未处理 $failed 个")
             return
@@ -238,14 +239,14 @@ class NativeDataView(context: Context, private val client: NativeLedgerClient, p
         val item = selected[index]
         if (item.sourceAccount.isBlank()) {
             item.status = "未处理"; item.message = "请填写来源账户"; showQueue(items)
-            importNext(index + 1, succeeded, failed + 1); return
+            importNext(selected, index + 1, succeeded, failed + 1); return
         }
         item.status = "正在导入"; showQueue(items); setBusy(true, "正在处理 ${index + 1}/${selected.size}：${item.relativePath}")
         val body = JSONObject().put("format_id", item.formatId).put("source_account", item.sourceAccount)
             .put("filename", item.relativePath.substringAfterLast('/')).put("content_base64", item.contentBase64)
         client.request("POST", "/api/v1/imports", body) { result ->
-            result.onSuccess { item.status = "导入成功"; importNext(index + 1, succeeded + 1, failed) }
-                .onFailure { item.status = "未处理"; item.message = it.message ?: "文件内容无法识别"; importNext(index + 1, succeeded, failed + 1) }
+            result.onSuccess { item.status = "导入成功"; importNext(selected, index + 1, succeeded + 1, failed) }
+                .onFailure { item.status = "未处理"; item.message = it.message ?: "文件内容无法识别"; importNext(selected, index + 1, succeeded, failed + 1) }
             showQueue(items)
         }
     }

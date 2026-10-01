@@ -328,6 +328,9 @@ def test_native_android_data_surface_keeps_platform_file_boundaries() -> None:
     assert "MaterialCardView" in source
     assert "LinearProgressIndicator" in source
     assert "fun setBusy(" in source
+    assert 'importNext(items.filter { it.status == "等待导入" }, 0, 0, 0)' in source
+    assert "private fun importNext(selected: List<QueueItem>" in source
+    assert "private fun importNext(index: Int" not in source
     activity = (
         ROOT / "android/app/src/main/java/io/github/ssh555/financialbeancount/MainActivity.kt"
     ).read_text(encoding="utf-8")
